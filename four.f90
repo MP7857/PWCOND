@@ -23,8 +23,8 @@ subroutine four(w0, z0, dz, tblm, taunew, r, rab, betar)
 !             s ;
 !             p_z, p_{-x}, p_{-y} ;
 !             d_{z^2-1}, d_{-xz}, d_{-yz}, d_{x^2-y^2}, d_{xy}
-!             f_{z(5z^2-3r^2)}, f_{x(5z^2-r^2)}, f_{y(5z^2-r^2)}, f_{z(x^2-y^2)}, f_{xyz}, f_{x(x^2-3y^2)}, f_{y(3x^2-y^2)}
-!
+!             f_{z(5z^2-3r^2)}, f_{x(5z^2-r^2)}, f_{y(5z^2-r^2)},
+!             f_{xyz}, f_{z(x^2-y^2)}, f_{x(x^2-3y^2)}, f_{y(3x^2-y^2)}
 !
 ! input:  tblm   -  array characterizing the orbital.
 !         taunew -  coordinates and radius of the orbital.
@@ -244,9 +244,9 @@ implicit none
      s2=tpi/sarea*sqrt(5.d0/tpi/8.d0)
   elseif (lb.eq.3) then
      s1 = tpi/sarea * sqrt(35.d0/(fpi*8.d0))
-     s2 = tpi/sarea * sqrt(105.d0/fpi)
-     s3 = tpi/sarea * sqrt(21.d0/(fpi*2.d0))
-     s4 = tpi/sarea * sqrt(7.d0/fpi)
+     s2 = tpi/sarea * sqrt(105.d0/(fpi*8.d0))
+     s3 = tpi/sarea * sqrt(21.d0/(fpi*16.d0))
+     s4 = tpi/sarea * sqrt(7.d0/(fpi*4.d0))
   endif
   do ig=1, ngper
     do kz=1, nz1
@@ -268,12 +268,12 @@ implicit none
         t3=w0(kz,ig,3);wa3=wadd3(kz,ig)
         t4=w0(kz,ig,4);t5=w0(kz,ig,5)
         t6=w0(kz,ig,6);t7=w0(kz,ig,7)
-        w0(kz,ig,1)= s4 * (2.d0*zsl(kz)**3*t1-3.d0*zsl(kz)*wa1)
+        w0(kz,ig,1)=s4*(2.d0*zsl(kz)**3*t1-3.d0*zsl(kz)*wa1)
         w0(kz,ig,2)=cim*s3*(4.d0*zsl(kz)**2*t2-wa2)
         w0(kz,ig,3)=cim*s3*(4.d0*zsl(kz)**2*t3-wa3)
-        w0(kz,ig,4)=-s2*zsl(kz)*t4
-        w0(kz,ig,5)=-cim*s2*zsl(kz)*t5
-        w0(kz,ig,6)=-s1*t6
+        w0(kz,ig,4)=-s2*zsl(kz)*t5
+        w0(kz,ig,5)=-s2*zsl(kz)*t4
+        w0(kz,ig,6)=cim*s1*t6
         w0(kz,ig,7)=cim*s1*t7
       endif
     enddo
