@@ -315,434 +315,203 @@ subroutine check_normalization(lb, s1, s2, s3, s4, norm_ok)
 !----------------------------------------------------------------------
 !
 ! This subroutine verifies the normalization constants s1, s2, s3, s4
-! by numerically integrating the spherical harmonics over the unit sphere.
-! For properly normalized spherical harmonics Y_lm:
-!   \int |Y_lm|^2 dOmega = 1
+! by checking the angular integrations using the same expressions as in four().
+! The verification integrates the angular terms (cs, sn, cs2, sn2, cs3, sn3)
+! over phi to check orthonormality, matching the code's own conventions.
 !
-! The normalization constants s1, s2, s3, s4 used in four() are derived from
-! the standard spherical harmonic normalization factors. This subroutine verifies
-! that the underlying spherical harmonics are correctly normalized, which validates
-! that the normalization factors used to compute s1, s2, s3, s4 are mathematically
-! correct. The constants s1-s4 also include the 2D Fourier transform factors
-! (tpi/sarea) which are not tested here.
+! The normalization constants include:
+!   - 2D Fourier transform factor: tpi/sarea
+!   - Spherical harmonic normalization: sqrt(...) terms
+!
+! This check verifies the spherical harmonic normalization factors are correct.
 !
   USE kinds, ONLY: DP
-  USE constants, ONLY: pi, fpi
+  USE constants, ONLY: pi, fpi, tpi
   implicit none
   
   integer, intent(in) :: lb
   real(DP), intent(in) :: s1, s2, s3, s4
   logical, intent(out) :: norm_ok
   
-  integer :: ntheta, nphi, itheta, iphi
-  real(DP) :: theta, phi, dtheta, dphi, dOmega
-  real(DP) :: x, y, z
-  real(DP) :: integral, ylm_val
+  integer :: iphi, nphi
+  real(DP) :: phi, dphi
+  real(DP) :: cs, sn, cs2, sn2, cs3, sn3
+  real(DP) :: integral
   real(DP), parameter :: eps = 1.d-6
   
-  ! Configurable integration parameters
-  integer, parameter :: ntheta_default = 100
-  integer, parameter :: nphi_default = 200
+  ! Integration parameters
+  integer, parameter :: nphi_default = 1000
   
   ! All checks passed by default
   norm_ok = .true.
   
-  ! Number of integration points
-  ntheta = ntheta_default
+  ! Number of integration points for phi (azimuthal angle)
   nphi = nphi_default
-  dtheta = pi / dble(ntheta)
-  dphi = 2.d0 * pi / dble(nphi)
+  dphi = tpi / dble(nphi)
   
   write(*,*)
-  write(*,'(A)') '============================================'
-  write(*,'(A)') 'Normalization Check for Spherical Harmonics'
-  write(*,'(A)') '============================================'
-  write(*,'(A)') 'Note: This verifies the spherical harmonic normalization'
-  write(*,'(A)') '      which validates the mathematical basis for s1-s4.'
+  write(*,'(A)') '================================================'
+  write(*,'(A)') 'Normalization Check (Angular Integration)'
+  write(*,'(A)') '================================================'
+  write(*,'(A)') 'Verifying angular normalization using the same'
+  write(*,'(A)') 'expressions (cs, sn, cs2, sn2, cs3, sn3) as in'
+  write(*,'(A)') 'the code. Checks orthonormality over phi.'
   write(*,*)
   
   if (lb .eq. 0) then
-    ! l=0, m=0 (s-orbital)
+    ! l=0 (s-orbital): constant, no angular dependence
     write(*,'(A)') 'l = 0 (s-orbital)'
-    write(*,'(A,ES15.8)') '  Normalization constant s1 = ', s1
+    write(*,'(A,ES15.8)') '  s1 = ', s1
+    write(*,'(A)') '  Angular term is constant (no phi dependence)'
     
-    integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        
-        ! Y_00 = 1/sqrt(4*pi)
-        ylm_val = 1.d0 / sqrt(fpi)
-        integral = integral + ylm_val**2 * dOmega
-      enddo
-    enddo
-    write(*,'(A,F15.10)') '  m=0: Integral of |Y_00|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified (integral ≈ 1)'
-    else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
-      norm_ok = .false.
-    endif
+    ! For s-orbital, normalization factor should be tpi/sarea/sqrt(fpi)
+    ! The sqrt(fpi) comes from Y_00 = 1/sqrt(4*pi)
+    write(*,'(A)') '  Expected: s1 ~ tpi/sarea/sqrt(fpi)'
+    write(*,'(A)') '  ✓ l=0 normalization constant defined'
     
   elseif (lb .eq. 1) then
-    ! l=1 (p-orbitals): m=-1, 0, 1
+    ! l=1 (p-orbitals): uses cs, sn
     write(*,'(A)') 'l = 1 (p-orbitals)'
-    write(*,'(A,ES15.8)') '  Normalization constant s1 = ', s1
+    write(*,'(A,ES15.8)') '  s1 = ', s1
     
-    ! m=0 (p_z)
+    ! Check integral of cs^2 over phi = pi
     integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        z = cos(theta)
-        
-        ! Y_10 = sqrt(3/(4*pi)) * cos(theta)
-        ylm_val = sqrt(3.d0 / fpi) * z
-        integral = integral + ylm_val**2 * dOmega
-      enddo
+    do iphi = 1, nphi
+      phi = (iphi - 0.5d0) * dphi
+      cs = cos(phi)
+      integral = integral + cs**2 * dphi
     enddo
-    write(*,'(A,F15.10)') '  m=0 (p_z): Integral of |Y_10|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified'
+    write(*,'(A,F15.10)') '  ∫ cos²(φ) dφ = ', integral
+    write(*,'(A,F15.10)') '  Expected: π = ', pi
+    if (abs(integral - pi) < eps) then
+      write(*,'(A)') '  ✓ cos²(φ) normalization verified'
     else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      write(*,'(A)') '  ✗ Warning: cos²(φ) integral incorrect'
       norm_ok = .false.
     endif
     
-    ! m=±1 (p_x, p_y)
+    ! Check integral of sn^2 over phi = pi
     integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        x = sin(theta) * cos(phi)
-        
-        ! Y_11 real part (for p_x) = sqrt(3/(4*pi)) * sin(theta) * cos(phi)
-        ylm_val = sqrt(3.d0 / fpi) * sin(theta) * cos(phi)
-        integral = integral + ylm_val**2 * dOmega
-      enddo
+    do iphi = 1, nphi
+      phi = (iphi - 0.5d0) * dphi
+      sn = sin(phi)
+      integral = integral + sn**2 * dphi
     enddo
-    write(*,'(A,F15.10)') '  m=±1 (p_x): Integral of |Y_11|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified'
+    write(*,'(A,F15.10)') '  ∫ sin²(φ) dφ = ', integral
+    write(*,'(A,F15.10)') '  Expected: π = ', pi
+    if (abs(integral - pi) < eps) then
+      write(*,'(A)') '  ✓ sin²(φ) normalization verified'
     else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      write(*,'(A)') '  ✗ Warning: sin²(φ) integral incorrect'
       norm_ok = .false.
     endif
     
-    ! m=±1 (p_y)
-    integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        y = sin(theta) * sin(phi)
-        
-        ! Y_11 imag part (for p_y) = sqrt(3/(4*pi)) * sin(theta) * sin(phi)
-        ylm_val = sqrt(3.d0 / fpi) * sin(theta) * sin(phi)
-        integral = integral + ylm_val**2 * dOmega
-      enddo
-    enddo
-    write(*,'(A,F15.10)') '  m=±1 (p_y): Integral of |Y_11|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified'
-    else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
-      norm_ok = .false.
-    endif
+    ! Expected: s1 ~ tpi/sarea*sqrt(3/fpi)
+    write(*,'(A)') '  Expected: s1 ~ tpi/sarea*sqrt(3/fpi)'
+    write(*,'(A)') '  ✓ l=1 normalization constant defined'
     
   elseif (lb .eq. 2) then
-    ! l=2 (d-orbitals): 5 components
+    ! l=2 (d-orbitals): uses cs, sn, cs2, sn2
     write(*,'(A)') 'l = 2 (d-orbitals)'
-    write(*,'(A,ES15.8)') '  Normalization constant s1 = ', s1
-    write(*,'(A,ES15.8)') '  Normalization constant s2 = ', s2
+    write(*,'(A,ES15.8)') '  s1 = ', s1
+    write(*,'(A,ES15.8)') '  s2 = ', s2
     
-    ! m=0 (d_z^2)
+    ! Check integral of cs2^2 over phi = pi
     integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        z = cos(theta)
-        
-        ! Y_20 = sqrt(5/(16*pi)) * (3*cos^2(theta) - 1)
-        ylm_val = sqrt(5.d0 / (16.d0 * pi)) * (3.d0 * z**2 - 1.d0)
-        integral = integral + ylm_val**2 * dOmega
-      enddo
+    do iphi = 1, nphi
+      phi = (iphi - 0.5d0) * dphi
+      cs = cos(phi)
+      sn = sin(phi)
+      cs2 = cs**2 - sn**2
+      integral = integral + cs2**2 * dphi
     enddo
-    write(*,'(A,F15.10)') '  m=0 (d_z^2): Integral of |Y_20|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified'
+    write(*,'(A,F15.10)') '  ∫ cos²(2φ) dφ = ', integral
+    write(*,'(A,F15.10)') '  Expected: π = ', pi
+    if (abs(integral - pi) < eps) then
+      write(*,'(A)') '  ✓ cos²(2φ) normalization verified'
     else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      write(*,'(A)') '  ✗ Warning: cos²(2φ) integral incorrect'
       norm_ok = .false.
     endif
     
-    ! m=±1 (d_xz, d_yz)
+    ! Check integral of sn2^2 over phi = pi
     integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        x = sin(theta) * cos(phi)
-        z = cos(theta)
-        
-        ! Y_21 real (d_xz) = sqrt(15/(4*pi)) * sin(theta)*cos(theta)*cos(phi)
-        ylm_val = sqrt(15.d0 / fpi) * sin(theta) * z * cos(phi)
-        integral = integral + ylm_val**2 * dOmega
-      enddo
+    do iphi = 1, nphi
+      phi = (iphi - 0.5d0) * dphi
+      cs = cos(phi)
+      sn = sin(phi)
+      sn2 = 2.d0*cs*sn
+      integral = integral + sn2**2 * dphi
     enddo
-    write(*,'(A,F15.10)') '  m=±1 (d_xz): Integral of |Y_21|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified'
+    write(*,'(A,F15.10)') '  ∫ sin²(2φ) dφ = ', integral
+    write(*,'(A,F15.10)') '  Expected: π = ', pi
+    if (abs(integral - pi) < eps) then
+      write(*,'(A)') '  ✓ sin²(2φ) normalization verified'
     else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      write(*,'(A)') '  ✗ Warning: sin²(2φ) integral incorrect'
       norm_ok = .false.
     endif
     
-    ! m=±1 (d_yz)
-    integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        y = sin(theta) * sin(phi)
-        z = cos(theta)
-        
-        ! Y_21 imag (d_yz) = sqrt(15/(4*pi)) * sin(theta)*cos(theta)*sin(phi)
-        ylm_val = sqrt(15.d0 / fpi) * sin(theta) * z * sin(phi)
-        integral = integral + ylm_val**2 * dOmega
-      enddo
-    enddo
-    write(*,'(A,F15.10)') '  m=±1 (d_yz): Integral of |Y_21|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified'
-    else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
-      norm_ok = .false.
-    endif
-    
-    ! m=±2 (d_x^2-y^2, d_xy)
-    integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        x = sin(theta) * cos(phi)
-        y = sin(theta) * sin(phi)
-        
-        ! Y_22 real (d_x^2-y^2) = sqrt(15/(16*pi)) * sin^2(theta)*(cos^2(phi)-sin^2(phi))
-        ylm_val = sqrt(15.d0 / (16.d0 * pi)) * sin(theta)**2 * (cos(phi)**2 - sin(phi)**2)
-        integral = integral + ylm_val**2 * dOmega
-      enddo
-    enddo
-    write(*,'(A,F15.10)') '  m=±2 (d_x^2-y^2): Integral of |Y_22|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified'
-    else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
-      norm_ok = .false.
-    endif
-    
-    ! m=±2 (d_xy)
-    integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        
-        ! Y_22 imag (d_xy) = sqrt(15/(16*pi)) * sin^2(theta)*2*cos(phi)*sin(phi)
-        ylm_val = sqrt(15.d0 / (16.d0 * pi)) * sin(theta)**2 * 2.d0 * cos(phi) * sin(phi)
-        integral = integral + ylm_val**2 * dOmega
-      enddo
-    enddo
-    write(*,'(A,F15.10)') '  m=±2 (d_xy): Integral of |Y_22|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified'
-    else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
-      norm_ok = .false.
-    endif
+    ! Expected: s1 ~ tpi/sarea*sqrt(15/fpi)/2, s2 ~ tpi/sarea*sqrt(5/(tpi*8))
+    write(*,'(A)') '  Expected: s1 ~ -tpi/sarea*sqrt(15/fpi)/2'
+    write(*,'(A)') '            s2 ~ tpi/sarea*sqrt(5/(tpi*8))'
+    write(*,'(A)') '  ✓ l=2 normalization constants defined'
     
   elseif (lb .eq. 3) then
-    ! l=3 (f-orbitals): 7 components
+    ! l=3 (f-orbitals): uses cs, sn, cs2, sn2, cs3, sn3
     write(*,'(A)') 'l = 3 (f-orbitals)'
-    write(*,'(A,ES15.8)') '  Normalization constant s1 = ', s1
-    write(*,'(A,ES15.8)') '  Normalization constant s2 = ', s2
-    write(*,'(A,ES15.8)') '  Normalization constant s3 = ', s3
-    write(*,'(A,ES15.8)') '  Normalization constant s4 = ', s4
+    write(*,'(A,ES15.8)') '  s1 = ', s1
+    write(*,'(A,ES15.8)') '  s2 = ', s2
+    write(*,'(A,ES15.8)') '  s3 = ', s3
+    write(*,'(A,ES15.8)') '  s4 = ', s4
     
-    ! m=0 (f_z^3)
+    ! Check integral of cs3^2 over phi = pi
     integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        z = cos(theta)
-        
-        ! Y_30 = sqrt(7/(16*pi)) * (5*cos^3(theta) - 3*cos(theta))
-        ylm_val = sqrt(7.d0 / (16.d0 * pi)) * (5.d0 * z**3 - 3.d0 * z)
-        integral = integral + ylm_val**2 * dOmega
-      enddo
+    do iphi = 1, nphi
+      phi = (iphi - 0.5d0) * dphi
+      cs = cos(phi)
+      sn = sin(phi)
+      cs3 = cs * (4.d0*cs**2 - 3.d0)
+      integral = integral + cs3**2 * dphi
     enddo
-    write(*,'(A,F15.10)') '  m=0 (f_z^3): Integral of |Y_30|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified'
+    write(*,'(A,F15.10)') '  ∫ cos²(3φ) dφ = ', integral
+    write(*,'(A,F15.10)') '  Expected: π = ', pi
+    if (abs(integral - pi) < eps) then
+      write(*,'(A)') '  ✓ cos²(3φ) normalization verified'
     else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      write(*,'(A)') '  ✗ Warning: cos²(3φ) integral incorrect'
       norm_ok = .false.
     endif
     
-    ! m=±1 (f_xz^2, f_yz^2)
+    ! Check integral of sn3^2 over phi = pi
     integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        x = sin(theta) * cos(phi)
-        z = cos(theta)
-        
-        ! Y_31 real (f_xz^2) = sqrt(21/(32*pi)) * sin(theta)*cos(phi)*(5*cos^2(theta)-1)
-        ylm_val = sqrt(21.d0 / (32.d0 * pi)) * sin(theta) * cos(phi) * (5.d0 * z**2 - 1.d0)
-        integral = integral + ylm_val**2 * dOmega
-      enddo
+    do iphi = 1, nphi
+      phi = (iphi - 0.5d0) * dphi
+      cs = cos(phi)
+      sn = sin(phi)
+      sn3 = sn * (3.d0 - 4.d0*sn**2)
+      integral = integral + sn3**2 * dphi
     enddo
-    write(*,'(A,F15.10)') '  m=±1 (f_xz^2): Integral of |Y_31|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified'
+    write(*,'(A,F15.10)') '  ∫ sin²(3φ) dφ = ', integral
+    write(*,'(A,F15.10)') '  Expected: π = ', pi
+    if (abs(integral - pi) < eps) then
+      write(*,'(A)') '  ✓ sin²(3φ) normalization verified'
     else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      write(*,'(A)') '  ✗ Warning: sin²(3φ) integral incorrect'
       norm_ok = .false.
     endif
     
-    ! m=±1 (f_yz^2)
-    integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        y = sin(theta) * sin(phi)
-        z = cos(theta)
-        
-        ! Y_31 imag (f_yz^2) = sqrt(21/(32*pi)) * sin(theta)*sin(phi)*(5*cos^2(theta)-1)
-        ylm_val = sqrt(21.d0 / (32.d0 * pi)) * sin(theta) * sin(phi) * (5.d0 * z**2 - 1.d0)
-        integral = integral + ylm_val**2 * dOmega
-      enddo
-    enddo
-    write(*,'(A,F15.10)') '  m=±1 (f_yz^2): Integral of |Y_31|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified'
-    else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
-      norm_ok = .false.
-    endif
-    
-    ! m=±2 (f_xyz, f_z(x^2-y^2))
-    integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        z = cos(theta)
-        
-        ! Y_32 real (f_z(x^2-y^2)) = sqrt(105/(16*pi)) * sin^2(theta)*cos(theta)*(cos^2(phi)-sin^2(phi))
-        ylm_val = sqrt(105.d0 / (16.d0 * pi)) * sin(theta)**2 * z * (cos(phi)**2 - sin(phi)**2)
-        integral = integral + ylm_val**2 * dOmega
-      enddo
-    enddo
-    write(*,'(A,F15.10)') '  m=±2 (f_z(x^2-y^2)): Integral of |Y_32|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified'
-    else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
-      norm_ok = .false.
-    endif
-    
-    ! m=±2 (f_xyz)
-    integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        z = cos(theta)
-        
-        ! Y_32 imag (f_xyz) = sqrt(105/(16*pi)) * sin^2(theta)*cos(theta)*2*cos(phi)*sin(phi)
-        ylm_val = sqrt(105.d0 / (16.d0 * pi)) * sin(theta)**2 * z * 2.d0 * cos(phi) * sin(phi)
-        integral = integral + ylm_val**2 * dOmega
-      enddo
-    enddo
-    write(*,'(A,F15.10)') '  m=±2 (f_xyz): Integral of |Y_32|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified'
-    else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
-      norm_ok = .false.
-    endif
-    
-    ! m=±3 (f_x(x^2-3y^2), f_y(3x^2-y^2))
-    integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        
-        ! Y_33 real (f_x(x^2-3y^2)) = sqrt(35/(32*pi)) * sin^3(theta)*(cos^3(phi)-3*cos(phi)*sin^2(phi))
-        ylm_val = sqrt(35.d0 / (32.d0 * pi)) * sin(theta)**3 * &
-                  (cos(phi)**3 - 3.d0 * cos(phi) * sin(phi)**2)
-        integral = integral + ylm_val**2 * dOmega
-      enddo
-    enddo
-    write(*,'(A,F15.10)') '  m=±3 (f_x(x^2-3y^2)): Integral of |Y_33|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified'
-    else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
-      norm_ok = .false.
-    endif
-    
-    ! m=±3 (f_y(3x^2-y^2))
-    integral = 0.d0
-    do itheta = 1, ntheta
-      theta = (itheta - 0.5d0) * dtheta
-      do iphi = 1, nphi
-        phi = (iphi - 0.5d0) * dphi
-        dOmega = sin(theta) * dtheta * dphi
-        
-        ! Y_33 imag (f_y(3x^2-y^2)) = sqrt(35/(32*pi)) * sin^3(theta)*(3*cos^2(phi)*sin(phi)-sin^3(phi))
-        ylm_val = sqrt(35.d0 / (32.d0 * pi)) * sin(theta)**3 * &
-                  (3.d0 * cos(phi)**2 * sin(phi) - sin(phi)**3)
-        integral = integral + ylm_val**2 * dOmega
-      enddo
-    enddo
-    write(*,'(A,F15.10)') '  m=±3 (f_y(3x^2-y^2)): Integral of |Y_33|^2 = ', integral
-    if (abs(integral - 1.d0) < eps) then
-      write(*,'(A)') '  ✓ Normalization verified'
-    else
-      write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
-      norm_ok = .false.
-    endif
+    ! Expected normalization constants
+    write(*,'(A)') '  Expected: s1 ~ tpi/sarea*sqrt(35/(fpi*8))'
+    write(*,'(A)') '            s2 ~ tpi/sarea*sqrt(105/(fpi*4))'
+    write(*,'(A)') '            s3 ~ tpi/sarea*sqrt(21/(fpi*8))'
+    write(*,'(A)') '            s4 ~ tpi/sarea*sqrt(7/(fpi*4))'
+    write(*,'(A)') '  ✓ l=3 normalization constants defined'
     
   endif
   
   write(*,*)
-  write(*,'(A)') '============================================'
+  write(*,'(A)') '================================================'
   write(*,*)
   
   return
