@@ -296,7 +296,7 @@ implicit none
 ! Check normalization constants by numerical integration
 ! Set check_norm_constants to .true. to enable verification (default: .false. for performance)
 !
-  logical, parameter :: check_norm_constants = .true.
+  logical, parameter :: check_norm_constants = .false.
   logical :: norm_ok
   
   if (check_norm_constants) then
@@ -319,8 +319,12 @@ subroutine check_normalization(lb, s1, s2, s3, s4, norm_ok)
 ! For properly normalized spherical harmonics Y_lm:
 !   \int |Y_lm|^2 dOmega = 1
 !
-! The normalization constants are related to the standard spherical harmonic
-! normalization factors.
+! The normalization constants s1, s2, s3, s4 used in four() are derived from
+! the standard spherical harmonic normalization factors. This subroutine verifies
+! that the underlying spherical harmonics are correctly normalized, which validates
+! that the normalization factors used to compute s1, s2, s3, s4 are mathematically
+! correct. The constants s1-s4 also include the 2D Fourier transform factors
+! (tpi/sarea) which are not tested here.
 !
   USE kinds, ONLY: DP
   USE constants, ONLY: pi, fpi
@@ -330,12 +334,11 @@ subroutine check_normalization(lb, s1, s2, s3, s4, norm_ok)
   real(DP), intent(in) :: s1, s2, s3, s4
   logical, intent(out) :: norm_ok
   
-  integer :: ntheta, nphi, itheta, iphi, m
+  integer :: ntheta, nphi, itheta, iphi
   real(DP) :: theta, phi, dtheta, dphi, dOmega
-  real(DP) :: x, y, z, r2
+  real(DP) :: x, y, z
   real(DP) :: integral, ylm_val
   real(DP), parameter :: eps = 1.d-6
-  character(len=20) :: orbital_name
   
   ! Configurable integration parameters
   integer, parameter :: ntheta_default = 100
@@ -354,6 +357,8 @@ subroutine check_normalization(lb, s1, s2, s3, s4, norm_ok)
   write(*,'(A)') '============================================'
   write(*,'(A)') 'Normalization Check for Spherical Harmonics'
   write(*,'(A)') '============================================'
+  write(*,'(A)') 'Note: This verifies the spherical harmonic normalization'
+  write(*,'(A)') '      which validates the mathematical basis for s1-s4.'
   write(*,*)
   
   if (lb .eq. 0) then
