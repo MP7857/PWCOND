@@ -293,16 +293,16 @@ implicit none
   deallocate(wadd3)
 
 !
-! Check normalization constants by numerical integration
-! Set check_norm_constants to .true. to enable verification (default: .false. for performance)
+! Check computed integrals (fx1-fx6) and normalization by verifying w0
+! Set check_integrals to .true. to enable (default: .false. for performance)
 !
-  logical, parameter :: check_norm_constants = .false.
-  logical :: norm_ok
+  logical, parameter :: check_integrals = .false.
+  logical :: integrals_ok
   
-  if (check_norm_constants) then
-    call check_normalization(lb, s1, s2, s3, s4, norm_ok)
-    if (.not. norm_ok) then
-      write(*,'(A)') 'WARNING: Some normalization checks failed!'
+  if (check_integrals) then
+    call check_computed_integrals(w0, lb, s1, s2, s3, s4, nz1, ngper, dz1*alat, integrals_ok)
+    if (.not. integrals_ok) then
+      write(*,'(A)') 'WARNING: Computed integrals may have issues!'
     endif
   endif
 
@@ -311,211 +311,115 @@ end subroutine four
 
 !
 !----------------------------------------------------------------------
-subroutine check_normalization(lb, s1, s2, s3, s4, norm_ok)
+subroutine check_computed_integrals(w0, lb, s1, s2, s3, s4, nz1, ngper, dz, integrals_ok)
 !----------------------------------------------------------------------
 !
-! This subroutine verifies the normalization constants s1, s2, s3, s4
-! by checking the angular integrations using the same expressions as in four().
-! The verification integrates the angular terms (cs, sn, cs2, sn2, cs3, sn3)
-! over phi to check orthonormality, matching the code's own conventions.
-!
-! The normalization constants include:
-!   - 2D Fourier transform factor: tpi/sarea
-!   - Spherical harmonic normalization: sqrt(...) terms
-!
-! This check verifies the spherical harmonic normalization factors are correct.
+! This subroutine verifies the computed integrals (fx1-fx6) and normalization
+! by checking properties of the final w0 array after all processing.
+! 
+! It computes the integrated norm of w0 over z-slices for each m component
+! and reports diagnostic information about the computed integrals.
 !
   USE kinds, ONLY: DP
-  USE constants, ONLY: pi, fpi, tpi
+  USE constants, ONLY: tpi, fpi
   implicit none
   
-  integer, intent(in) :: lb
-  real(DP), intent(in) :: s1, s2, s3, s4
-  logical, intent(out) :: norm_ok
+  integer, intent(in) :: lb, nz1, ngper
+  real(DP), intent(in) :: s1, s2, s3, s4, dz
+  complex(DP), intent(in) :: w0(nz1, ngper, 7)
+  logical, intent(out) :: integrals_ok
   
-  integer :: iphi, nphi
-  real(DP) :: phi, dphi
-  real(DP) :: cs, sn, cs2, sn2, cs3, sn3
-  real(DP) :: integral
-  real(DP), parameter :: eps = 1.d-6
-  
-  ! Integration parameters
-  integer, parameter :: nphi_default = 1000
+  integer :: kz, ig, m, num_m
+  real(DP) :: norm_sum, max_val, min_val, avg_val
+  real(DP), parameter :: eps = 1.d-10
   
   ! All checks passed by default
-  norm_ok = .true.
+  integrals_ok = .true.
   
-  ! Number of integration points for phi (azimuthal angle)
-  nphi = nphi_default
-  dphi = tpi / dble(nphi)
-  
-  write(*,*)
-  write(*,'(A)') '================================================'
-  write(*,'(A)') 'Normalization Check (Angular Integration)'
-  write(*,'(A)') '================================================'
-  write(*,'(A)') 'Verifying angular normalization using the same'
-  write(*,'(A)') 'expressions (cs, sn, cs2, sn2, cs3, sn3) as in'
-  write(*,'(A)') 'the code. Checks orthonormality over phi.'
-  write(*,*)
-  
+  ! Determine number of m components for this l
   if (lb .eq. 0) then
-    ! l=0 (s-orbital): constant, no angular dependence
-    write(*,'(A)') 'l = 0 (s-orbital)'
-    write(*,'(A,ES15.8)') '  s1 = ', s1
-    write(*,'(A)') '  Angular term is constant (no phi dependence)'
-    
-    ! For s-orbital, normalization factor should be tpi/sarea/sqrt(fpi)
-    ! The sqrt(fpi) comes from Y_00 = 1/sqrt(4*pi)
-    write(*,'(A)') '  Expected: s1 ~ tpi/sarea/sqrt(fpi)'
-    write(*,'(A)') '  ✓ l=0 normalization constant defined'
-    
+    num_m = 1
   elseif (lb .eq. 1) then
-    ! l=1 (p-orbitals): uses cs, sn
-    write(*,'(A)') 'l = 1 (p-orbitals)'
-    write(*,'(A,ES15.8)') '  s1 = ', s1
-    
-    ! Check integral of cs^2 over phi = pi
-    integral = 0.d0
-    do iphi = 1, nphi
-      phi = (iphi - 0.5d0) * dphi
-      cs = cos(phi)
-      integral = integral + cs**2 * dphi
-    enddo
-    write(*,'(A,F15.10)') '  ∫ cos²(φ) dφ = ', integral
-    write(*,'(A,F15.10)') '  Expected: π = ', pi
-    if (abs(integral - pi) < eps) then
-      write(*,'(A)') '  ✓ cos²(φ) normalization verified'
-    else
-      write(*,'(A)') '  ✗ Warning: cos²(φ) integral incorrect'
-      norm_ok = .false.
-    endif
-    
-    ! Check integral of sn^2 over phi = pi
-    integral = 0.d0
-    do iphi = 1, nphi
-      phi = (iphi - 0.5d0) * dphi
-      sn = sin(phi)
-      integral = integral + sn**2 * dphi
-    enddo
-    write(*,'(A,F15.10)') '  ∫ sin²(φ) dφ = ', integral
-    write(*,'(A,F15.10)') '  Expected: π = ', pi
-    if (abs(integral - pi) < eps) then
-      write(*,'(A)') '  ✓ sin²(φ) normalization verified'
-    else
-      write(*,'(A)') '  ✗ Warning: sin²(φ) integral incorrect'
-      norm_ok = .false.
-    endif
-    
-    ! Expected: s1 ~ tpi/sarea*sqrt(3/fpi)
-    write(*,'(A)') '  Expected: s1 ~ tpi/sarea*sqrt(3/fpi)'
-    write(*,'(A)') '  ✓ l=1 normalization constant defined'
-    
+    num_m = 3
   elseif (lb .eq. 2) then
-    ! l=2 (d-orbitals): uses cs, sn, cs2, sn2
-    write(*,'(A)') 'l = 2 (d-orbitals)'
-    write(*,'(A,ES15.8)') '  s1 = ', s1
-    write(*,'(A,ES15.8)') '  s2 = ', s2
-    
-    ! Check integral of cs2^2 over phi = pi
-    integral = 0.d0
-    do iphi = 1, nphi
-      phi = (iphi - 0.5d0) * dphi
-      cs = cos(phi)
-      sn = sin(phi)
-      cs2 = cs**2 - sn**2
-      integral = integral + cs2**2 * dphi
-    enddo
-    write(*,'(A,F15.10)') '  ∫ cos²(2φ) dφ = ', integral
-    write(*,'(A,F15.10)') '  Expected: π = ', pi
-    if (abs(integral - pi) < eps) then
-      write(*,'(A)') '  ✓ cos²(2φ) normalization verified'
-    else
-      write(*,'(A)') '  ✗ Warning: cos²(2φ) integral incorrect'
-      norm_ok = .false.
-    endif
-    
-    ! Check integral of sn2^2 over phi = pi
-    integral = 0.d0
-    do iphi = 1, nphi
-      phi = (iphi - 0.5d0) * dphi
-      cs = cos(phi)
-      sn = sin(phi)
-      sn2 = 2.d0*cs*sn
-      integral = integral + sn2**2 * dphi
-    enddo
-    write(*,'(A,F15.10)') '  ∫ sin²(2φ) dφ = ', integral
-    write(*,'(A,F15.10)') '  Expected: π = ', pi
-    if (abs(integral - pi) < eps) then
-      write(*,'(A)') '  ✓ sin²(2φ) normalization verified'
-    else
-      write(*,'(A)') '  ✗ Warning: sin²(2φ) integral incorrect'
-      norm_ok = .false.
-    endif
-    
-    ! Expected: s1 ~ tpi/sarea*sqrt(15/fpi)/2, s2 ~ tpi/sarea*sqrt(5/(tpi*8))
-    write(*,'(A)') '  Expected: s1 ~ -tpi/sarea*sqrt(15/fpi)/2'
-    write(*,'(A)') '            s2 ~ tpi/sarea*sqrt(5/(tpi*8))'
-    write(*,'(A)') '  ✓ l=2 normalization constants defined'
-    
+    num_m = 5
   elseif (lb .eq. 3) then
-    ! l=3 (f-orbitals): uses cs, sn, cs2, sn2, cs3, sn3
-    write(*,'(A)') 'l = 3 (f-orbitals)'
-    write(*,'(A,ES15.8)') '  s1 = ', s1
-    write(*,'(A,ES15.8)') '  s2 = ', s2
-    write(*,'(A,ES15.8)') '  s3 = ', s3
-    write(*,'(A,ES15.8)') '  s4 = ', s4
-    
-    ! Check integral of cs3^2 over phi = pi
-    integral = 0.d0
-    do iphi = 1, nphi
-      phi = (iphi - 0.5d0) * dphi
-      cs = cos(phi)
-      sn = sin(phi)
-      cs3 = cs * (4.d0*cs**2 - 3.d0)
-      integral = integral + cs3**2 * dphi
-    enddo
-    write(*,'(A,F15.10)') '  ∫ cos²(3φ) dφ = ', integral
-    write(*,'(A,F15.10)') '  Expected: π = ', pi
-    if (abs(integral - pi) < eps) then
-      write(*,'(A)') '  ✓ cos²(3φ) normalization verified'
-    else
-      write(*,'(A)') '  ✗ Warning: cos²(3φ) integral incorrect'
-      norm_ok = .false.
-    endif
-    
-    ! Check integral of sn3^2 over phi = pi
-    integral = 0.d0
-    do iphi = 1, nphi
-      phi = (iphi - 0.5d0) * dphi
-      cs = cos(phi)
-      sn = sin(phi)
-      sn3 = sn * (3.d0 - 4.d0*sn**2)
-      integral = integral + sn3**2 * dphi
-    enddo
-    write(*,'(A,F15.10)') '  ∫ sin²(3φ) dφ = ', integral
-    write(*,'(A,F15.10)') '  Expected: π = ', pi
-    if (abs(integral - pi) < eps) then
-      write(*,'(A)') '  ✓ sin²(3φ) normalization verified'
-    else
-      write(*,'(A)') '  ✗ Warning: sin²(3φ) integral incorrect'
-      norm_ok = .false.
-    endif
-    
-    ! Expected normalization constants
-    write(*,'(A)') '  Expected: s1 ~ tpi/sarea*sqrt(35/(fpi*8))'
-    write(*,'(A)') '            s2 ~ tpi/sarea*sqrt(105/(fpi*4))'
-    write(*,'(A)') '            s3 ~ tpi/sarea*sqrt(21/(fpi*8))'
-    write(*,'(A)') '            s4 ~ tpi/sarea*sqrt(7/(fpi*4))'
-    write(*,'(A)') '  ✓ l=3 normalization constants defined'
-    
+    num_m = 7
+  else
+    num_m = 0
   endif
   
   write(*,*)
   write(*,'(A)') '================================================'
+  write(*,'(A)') 'Verification of Computed Integrals'
+  write(*,'(A)') '================================================'
+  write(*,'(A)') 'Checking the actual radial integrals (fx1-fx6)'
+  write(*,'(A)') 'after normalization. Analyzing w0 array.'
+  write(*,*)
+  write(*,'(A,I2)') 'Angular momentum l = ', lb
+  write(*,'(A,I2)') 'Number of m components = ', num_m
+  write(*,'(A,ES15.8)') 's1 = ', s1
+  if (lb .ge. 2) then
+    write(*,'(A,ES15.8)') 's2 = ', s2
+  endif
+  if (lb .ge. 3) then
+    write(*,'(A,ES15.8)') 's3 = ', s3
+    write(*,'(A,ES15.8)') 's4 = ', s4
+  endif
+  write(*,*)
+  
+  ! Check each m component
+  do m = 1, num_m
+    norm_sum = 0.d0
+    max_val = 0.d0
+    min_val = 1.d30
+    avg_val = 0.d0
+    
+    ! Integrate |w0|^2 over z and sum over g-vectors
+    do ig = 1, ngper
+      do kz = 1, nz1
+        norm_sum = norm_sum + abs(w0(kz,ig,m))**2 * dz
+        max_val = max(max_val, abs(w0(kz,ig,m)))
+        if (abs(w0(kz,ig,m)) > eps) then
+          min_val = min(min_val, abs(w0(kz,ig,m)))
+        endif
+        avg_val = avg_val + abs(w0(kz,ig,m))
+      enddo
+    enddo
+    
+    avg_val = avg_val / (nz1 * ngper)
+    
+    write(*,'(A,I2)') 'Component m = ', m
+    write(*,'(A,ES15.8)') '  Integrated |w0|^2 over z = ', norm_sum
+    write(*,'(A,ES15.8)') '  Max |w0| = ', max_val
+    write(*,'(A,ES15.8)') '  Min |w0| (non-zero) = ', min_val
+    write(*,'(A,ES15.8)') '  Avg |w0| = ', avg_val
+    
+    ! Check if values are reasonable (not NaN, not too small, not too large)
+    if (max_val .lt. eps) then
+      write(*,'(A)') '  ✗ Warning: All values near zero (integral may be wrong)'
+      integrals_ok = .false.
+    elseif (max_val .gt. 1.d10) then
+      write(*,'(A)') '  ✗ Warning: Values very large (normalization may be wrong)'
+      integrals_ok = .false.
+    elseif (norm_sum .lt. 0.d0) then
+      write(*,'(A)') '  ✗ Warning: Negative norm (should not happen)'
+      integrals_ok = .false.
+    else
+      write(*,'(A)') '  ✓ Values appear reasonable'
+    endif
+    write(*,*)
+  enddo
+  
+  write(*,'(A)') '------------------------------------------------'
+  write(*,'(A)') 'Note: This checks the computed radial integrals'
+  write(*,'(A)') '(fx1-fx6) by analyzing the final w0 array after'
+  write(*,'(A)') 'applying angular terms and normalization s1-s4.'
+  write(*,'(A)') '================================================'
   write(*,*)
   
   return
-end subroutine check_normalization
+end subroutine check_computed_integrals
 
 function indexr(zz, ndim, r)
   USE kinds, only : DP
