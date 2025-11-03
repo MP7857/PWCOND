@@ -294,15 +294,24 @@ implicit none
 
 !
 ! Check normalization constants by numerical integration
+! Set check_norm_constants to .true. to enable verification (default: .false. for performance)
 !
-  call check_normalization(lb, s1, s2, s3, s4)
+  logical, parameter :: check_norm_constants = .true.
+  logical :: norm_ok
+  
+  if (check_norm_constants) then
+    call check_normalization(lb, s1, s2, s3, s4, norm_ok)
+    if (.not. norm_ok) then
+      write(*,'(A)') 'WARNING: Some normalization checks failed!'
+    endif
+  endif
 
   return
 end subroutine four
 
 !
 !----------------------------------------------------------------------
-subroutine check_normalization(lb, s1, s2, s3, s4)
+subroutine check_normalization(lb, s1, s2, s3, s4, norm_ok)
 !----------------------------------------------------------------------
 !
 ! This subroutine verifies the normalization constants s1, s2, s3, s4
@@ -319,6 +328,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
   
   integer, intent(in) :: lb
   real(DP), intent(in) :: s1, s2, s3, s4
+  logical, intent(out) :: norm_ok
   
   integer :: ntheta, nphi, itheta, iphi, m
   real(DP) :: theta, phi, dtheta, dphi, dOmega
@@ -327,9 +337,16 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
   real(DP), parameter :: eps = 1.d-6
   character(len=20) :: orbital_name
   
+  ! Configurable integration parameters
+  integer, parameter :: ntheta_default = 100
+  integer, parameter :: nphi_default = 200
+  
+  ! All checks passed by default
+  norm_ok = .true.
+  
   ! Number of integration points
-  ntheta = 100
-  nphi = 200
+  ntheta = ntheta_default
+  nphi = nphi_default
   dtheta = pi / dble(ntheta)
   dphi = 2.d0 * pi / dble(nphi)
   
@@ -361,6 +378,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified (integral ≈ 1)'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
   elseif (lb .eq. 1) then
@@ -387,6 +405,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
     ! m=±1 (p_x, p_y)
@@ -408,6 +427,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
     ! m=±1 (p_y)
@@ -429,6 +449,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
   elseif (lb .eq. 2) then
@@ -456,6 +477,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
     ! m=±1 (d_xz, d_yz)
@@ -478,6 +500,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
     ! m=±1 (d_yz)
@@ -500,6 +523,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
     ! m=±2 (d_x^2-y^2, d_xy)
@@ -522,6 +546,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
     ! m=±2 (d_xy)
@@ -542,6 +567,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
   elseif (lb .eq. 3) then
@@ -571,6 +597,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
     ! m=±1 (f_xz^2, f_yz^2)
@@ -593,6 +620,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
     ! m=±1 (f_yz^2)
@@ -615,6 +643,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
     ! m=±2 (f_xyz, f_z(x^2-y^2))
@@ -636,6 +665,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
     ! m=±2 (f_xyz)
@@ -657,6 +687,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
     ! m=±3 (f_x(x^2-3y^2), f_y(3x^2-y^2))
@@ -678,6 +709,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
     ! m=±3 (f_y(3x^2-y^2))
@@ -699,6 +731,7 @@ subroutine check_normalization(lb, s1, s2, s3, s4)
       write(*,'(A)') '  ✓ Normalization verified'
     else
       write(*,'(A)') '  ✗ Warning: Normalization may be incorrect'
+      norm_ok = .false.
     endif
     
   endif
