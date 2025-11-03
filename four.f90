@@ -55,6 +55,8 @@ implicit none
   complex(DP) :: w0(nz1, ngper, 7)
   complex(DP), allocatable :: wadd(:,:), wadd2(:,:), wadd3(:,:)
   complex(DP) :: t1, t2, t3, t4, t5, t6, t7, wa1, wa2, wa3
+  logical, parameter :: check_integrals = .false.
+  logical :: integrals_ok
 
 
   allocate( x1(0:ndmx) )
@@ -296,9 +298,6 @@ implicit none
 ! Check computed integrals (fx1-fx6) and normalization by verifying w0
 ! Set check_integrals to .true. to enable (default: .false. for performance)
 !
-  logical, parameter :: check_integrals = .false.
-  logical :: integrals_ok
-  
   if (check_integrals) then
     call check_computed_integrals(w0, lb, s1, s2, s3, s4, nz1, ngper, dz1*alat, integrals_ok)
     if (.not. integrals_ok) then
