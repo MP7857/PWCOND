@@ -24,7 +24,7 @@ subroutine four(w0, z0, dz, tblm, taunew, r, rab, betar)
 !             p_z, p_{-x}, p_{-y} ;
 !             d_{z^2-1}, d_{-xz}, d_{-yz}, d_{x^2-y^2}, d_{xy}
 !             f_{z(5z^2-3r^2)}, f_{x(5z^2-r^2)}, f_{y(5z^2-r^2)},
-!             f_{xyz}, f_{z(x^2-y^2)}, f_{x(x^2-3y^2)}, f_{y(3x^2-y^2)}
+!             f_{z(x^2-y^2)}, f_{xyz}, f_{x(x^2-3y^2)}, f_{y(3x^2-y^2)}
 !
 ! input:  tblm   -  array characterizing the orbital.
 !         taunew -  coordinates and radius of the orbital.
@@ -160,22 +160,20 @@ implicit none
             endif
             fx3(kz)=fx3(kz)+(x3(iz-1)+x3(iz))*0.5d0*zr
             fx4(kz)=fx4(kz)+(x4(iz-1)+x4(iz))*0.5d0*zr
-         endif
-         if (lb.eq.3) then
+         elseif (lb.eq.3) then
             fx2(kz)=fx2(kz)+x2(iz)*0.5d0*zr
             call simpson(nmeshs-iz+1,x3(iz),rab(iz),fx3(kz))
-            call simpson(nmeshs-iz+1,x4(iz),rab(iz),fx4(kz))
             fx3(kz)=fx3(kz)+x3(iz)*0.5d0*zr
+            call simpson(nmeshs-iz+1,x4(iz),rab(iz),fx4(kz))
             fx4(kz)=fx4(kz)+x4(iz)*0.5d0*zr
             call simpson(nmeshs-iz+1,x5(iz),rab(iz),fx5(kz))
             call simpson(nmeshs-iz+1,x6(iz),rab(iz),fx6(kz))
             if(iz.eq.1) then
                x5(iz-1)=0.d0
-               x6(iz-1)=0.d0
             else
                x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3)
-               x6(iz-1)=0.d0
             endif
+            x6(iz-1)=0.d0
             fx5(kz)=fx5(kz)+(x5(iz-1)+x5(iz))*0.5d0*zr
             fx6(kz)=fx6(kz)+(x6(iz-1)+x6(iz))*0.5d0*zr
          endif
@@ -199,10 +197,8 @@ implicit none
         endif
         cs2=cs**2-sn**2
         sn2=2*cs*sn
-        if (lb.eq.3) then
-           cs3 = cs * (4.d0*cs**2 - 3.d0)
-           sn3 = sn * (3.d0 - 4.d0*sn**2)
-        endif
+        cs3 = cs * (4.d0*cs**2 - 3.d0)
+        sn3 = sn * (3.d0 - 4.d0*sn**2)
 
         do kz=1, nz1
             if (lb.eq.0) then
