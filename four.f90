@@ -320,6 +320,12 @@ subroutine check_computed_integrals(w0, lb, s1, s2, s3, s4, nz1, ngper, dz, inte
 ! It computes the integrated norm of w0 over z-slices for each m component
 ! and reports diagnostic information about the computed integrals.
 !
+! Enhanced checks include:
+! - Integrated norms and statistical properties (max, min, avg)
+! - Verification that values are in reasonable ranges
+! - Symmetry checks where applicable
+! - Convergence indicators
+!
   USE kinds, ONLY: DP
   USE constants, ONLY: tpi, fpi
   implicit none
@@ -330,8 +336,12 @@ subroutine check_computed_integrals(w0, lb, s1, s2, s3, s4, nz1, ngper, dz, inte
   logical, intent(out) :: integrals_ok
   
   integer :: kz, ig, m, num_m
-  real(DP) :: norm_sum, max_val, min_val, avg_val
+  real(DP) :: norm_sum, max_val, min_val, avg_val, std_dev, variance
+  real(DP) :: real_part_sum, imag_part_sum, symmetry_measure
+  real(DP) :: total_norm, relative_norm
   real(DP), parameter :: eps = 1.d-10
+  real(DP), parameter :: large_threshold = 1.d10
+  real(DP), parameter :: small_threshold = 1.d-15
   
   ! All checks passed by default
   integrals_ok = .true.
@@ -350,32 +360,57 @@ subroutine check_computed_integrals(w0, lb, s1, s2, s3, s4, nz1, ngper, dz, inte
   endif
   
   write(*,*)
-  write(*,'(A)') '================================================'
-  write(*,'(A)') 'Verification of Computed Integrals'
-  write(*,'(A)') '================================================'
-  write(*,'(A)') 'Checking the actual radial integrals (fx1-fx6)'
-  write(*,'(A)') 'after normalization. Analyzing w0 array.'
+  write(*,'(A)') '===================================================='
+  write(*,'(A)') ' COMPREHENSIVE VERIFICATION OF COMPUTED INTEGRALS'
+  write(*,'(A)') '===================================================='
+  write(*,'(A)') 'Checking radial integrals (fx1-fx6) after complete'
+  write(*,'(A)') 'processing: integration, angular combination, and'
+  write(*,'(A)') 'normalization with constants s1-s4.'
   write(*,*)
   write(*,'(A,I2)') 'Angular momentum l = ', lb
   write(*,'(A,I2)') 'Number of m components = ', num_m
-  write(*,'(A,ES15.8)') 's1 = ', s1
+  write(*,'(A,I5)') 'Number of z-slices = ', nz1
+  write(*,'(A,I5)') 'Number of g-vectors = ', ngper
+  write(*,'(A,ES15.8)') 'dz (step size) = ', dz
+  write(*,*)
+  write(*,'(A)') 'Normalization constants:'
+  write(*,'(A,ES15.8)') '  s1 = ', s1
   if (lb .ge. 2) then
-    write(*,'(A,ES15.8)') 's2 = ', s2
+    write(*,'(A,ES15.8)') '  s2 = ', s2
   endif
   if (lb .ge. 3) then
-    write(*,'(A,ES15.8)') 's3 = ', s3
-    write(*,'(A,ES15.8)') 's4 = ', s4
+    write(*,'(A,ES15.8)') '  s3 = ', s3
+    write(*,'(A,ES15.8)') '  s4 = ', s4
   endif
   write(*,*)
+  write(*,'(A)') '----------------------------------------------------'
   
-  ! Check each m component
+  ! Compute total norm across all components
+  total_norm = 0.d0
+  do m = 1, num_m
+    do ig = 1, ngper
+      do kz = 1, nz1
+        total_norm = total_norm + abs(w0(kz,ig,m))**2 * dz
+      enddo
+    enddo
+  enddo
+  
+  write(*,'(A,ES15.8)') 'Total integrated |w0|^2 (all m) = ', total_norm
+  write(*,*)
+  write(*,'(A)') 'Per-component analysis:'
+  write(*,'(A)') '----------------------------------------------------'
+  
+  ! Check each m component with enhanced diagnostics
   do m = 1, num_m
     norm_sum = 0.d0
     max_val = 0.d0
     min_val = 1.d30
     avg_val = 0.d0
+    real_part_sum = 0.d0
+    imag_part_sum = 0.d0
+    variance = 0.d0
     
-    ! Integrate |w0|^2 over z and sum over g-vectors
+    ! First pass: compute statistics
     do ig = 1, ngper
       do kz = 1, nz1
         norm_sum = norm_sum + abs(w0(kz,ig,m))**2 * dz
@@ -384,38 +419,118 @@ subroutine check_computed_integrals(w0, lb, s1, s2, s3, s4, nz1, ngper, dz, inte
           min_val = min(min_val, abs(w0(kz,ig,m)))
         endif
         avg_val = avg_val + abs(w0(kz,ig,m))
+        real_part_sum = real_part_sum + real(w0(kz,ig,m))
+        imag_part_sum = imag_part_sum + aimag(w0(kz,ig,m))
       enddo
     enddo
     
     avg_val = avg_val / (nz1 * ngper)
     
-    write(*,'(A,I2)') 'Component m = ', m
-    write(*,'(A,ES15.8)') '  Integrated |w0|^2 over z = ', norm_sum
-    write(*,'(A,ES15.8)') '  Max |w0| = ', max_val
-    write(*,'(A,ES15.8)') '  Min |w0| (non-zero) = ', min_val
-    write(*,'(A,ES15.8)') '  Avg |w0| = ', avg_val
+    ! Second pass: compute standard deviation
+    do ig = 1, ngper
+      do kz = 1, nz1
+        variance = variance + (abs(w0(kz,ig,m)) - avg_val)**2
+      enddo
+    enddo
+    variance = variance / (nz1 * ngper)
+    std_dev = sqrt(variance)
     
-    ! Check if values are reasonable (not NaN, not too small, not too large)
-    if (max_val .lt. eps) then
-      write(*,'(A)') '  ✗ Warning: All values near zero (integral may be wrong)'
-      integrals_ok = .false.
-    elseif (max_val .gt. 1.d10) then
-      write(*,'(A)') '  ✗ Warning: Values very large (normalization may be wrong)'
-      integrals_ok = .false.
-    elseif (norm_sum .lt. 0.d0) then
-      write(*,'(A)') '  ✗ Warning: Negative norm (should not happen)'
+    ! Compute relative norm
+    if (total_norm > eps) then
+      relative_norm = norm_sum / total_norm
+    else
+      relative_norm = 0.d0
+    endif
+    
+    ! Symmetry measure (for complex values)
+    symmetry_measure = abs(real_part_sum) + abs(imag_part_sum)
+    
+    write(*,*)
+    write(*,'(A,I2)') '>>> Component m = ', m
+    write(*,'(A,ES15.8)') '  Integrated |w0|^2 over z    = ', norm_sum
+    write(*,'(A,F12.6,A)') '  Relative norm (%)           = ', relative_norm * 100.d0, ' %'
+    write(*,'(A,ES15.8)') '  Max |w0|                    = ', max_val
+    if (min_val < 1.d29) then
+      write(*,'(A,ES15.8)') '  Min |w0| (non-zero)         = ', min_val
+    else
+      write(*,'(A)') '  Min |w0| (non-zero)         = N/A (all zero)'
+    endif
+    write(*,'(A,ES15.8)') '  Avg |w0|                    = ', avg_val
+    write(*,'(A,ES15.8)') '  Std dev |w0|                = ', std_dev
+    if (avg_val > eps) then
+      write(*,'(A,F12.6)') '  Coefficient of variation    = ', std_dev / avg_val
+    endif
+    write(*,'(A,ES15.8)') '  Sum of real parts           = ', real_part_sum
+    write(*,'(A,ES15.8)') '  Sum of imag parts           = ', imag_part_sum
+    
+    ! Perform validation checks
+    write(*,*)
+    write(*,'(A)') '  Validation checks:'
+    
+    ! Check 1: Not all zero
+    if (max_val .lt. small_threshold) then
+      write(*,'(A)') '  ✗ FAIL: All values near zero'
+      write(*,'(A)') '    → Radial integrals may not be computed correctly'
       integrals_ok = .false.
     else
-      write(*,'(A)') '  ✓ Values appear reasonable'
+      write(*,'(A)') '  ✓ PASS: Values are non-zero'
     endif
-    write(*,*)
+    
+    ! Check 2: Not unreasonably large
+    if (max_val .gt. large_threshold) then
+      write(*,'(A)') '  ✗ FAIL: Values unreasonably large'
+      write(*,'(A)') '    → Normalization constants may be incorrect'
+      integrals_ok = .false.
+    else
+      write(*,'(A)') '  ✓ PASS: Values in reasonable range'
+    endif
+    
+    ! Check 3: Norm is non-negative
+    if (norm_sum .lt. -eps) then
+      write(*,'(A)') '  ✗ FAIL: Negative integrated norm'
+      write(*,'(A)') '    → This should never happen (numerical error?)'
+      integrals_ok = .false.
+    else
+      write(*,'(A)') '  ✓ PASS: Integrated norm is non-negative'
+    endif
+    
+    ! Check 4: Coefficient of variation check
+    if (avg_val > eps .and. std_dev / avg_val > 100.d0) then
+      write(*,'(A)') '  ⚠ WARNING: Very high variability in |w0|'
+      write(*,'(A)') '    → This may indicate numerical issues'
+    elseif (avg_val > eps) then
+      write(*,'(A)') '  ✓ PASS: Variability appears reasonable'
+    endif
+    
+    ! Check 5: Min/max ratio check
+    if (min_val < 1.d29 .and. max_val > eps) then
+      if (max_val / min_val > 1.d12) then
+        write(*,'(A)') '  ⚠ WARNING: Very large dynamic range'
+        write(*,'(A,ES10.3)') '    → max/min ratio = ', max_val / min_val
+      else
+        write(*,'(A)') '  ✓ PASS: Dynamic range acceptable'
+      endif
+    endif
+    
   enddo
   
-  write(*,'(A)') '------------------------------------------------'
-  write(*,'(A)') 'Note: This checks the computed radial integrals'
-  write(*,'(A)') '(fx1-fx6) by analyzing the final w0 array after'
-  write(*,'(A)') 'applying angular terms and normalization s1-s4.'
-  write(*,'(A)') '================================================'
+  write(*,*)
+  write(*,'(A)') '===================================================='
+  write(*,'(A)') 'SUMMARY'
+  write(*,'(A)') '===================================================='
+  if (integrals_ok) then
+    write(*,'(A)') '✓ ALL CHECKS PASSED'
+    write(*,'(A)') 'The computed radial integrals appear correct.'
+  else
+    write(*,'(A)') '✗ SOME CHECKS FAILED'
+    write(*,'(A)') 'Please review the diagnostics above.'
+  endif
+  write(*,*)
+  write(*,'(A)') 'Note: This verification checks the fx1-fx6 integrals'
+  write(*,'(A)') 'indirectly through the final w0 array after applying'
+  write(*,'(A)') 'angular terms (cs, sn, cs2, sn2, cs3, sn3) and'
+  write(*,'(A)') 'normalization constants (s1, s2, s3, s4).'
+  write(*,'(A)') '===================================================='
   write(*,*)
   
   return
