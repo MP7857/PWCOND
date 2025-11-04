@@ -267,10 +267,10 @@ implicit none
         w0(kz,ig,1)=s4*(2.d0*zsl(kz)**3*t1-3.d0*zsl(kz)*wa1)
         w0(kz,ig,2)=-cim*s3*(4.d0*zsl(kz)**2*t2-wa2)
         w0(kz,ig,3)=-cim*s3*(4.d0*zsl(kz)**2*t3-wa3)
-        w0(kz,ig,4)=-s2*zsl(kz)*t4
-        w0(kz,ig,5)=-s2*zsl(kz)*t5
-        w0(kz,ig,6)=cim*s1*t6
-        w0(kz,ig,7)=cim*s1*t7
+        w0(kz,ig,4)=s2*zsl(kz)*t4
+        w0(kz,ig,5)=s2*zsl(kz)*t5
+        w0(kz,ig,6)=-cim*s1*t6
+        w0(kz,ig,7)=-cim*s1*t7
       endif
     enddo
   enddo
