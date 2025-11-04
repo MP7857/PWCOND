@@ -132,10 +132,98 @@ subroutine init_gper(ik)
   gnsh(1)=sqrt(gper(1,igper)**2+gper(2,igper)**2)*tpiba
   ninsh(1)=igper
 
+!
+! Rebuild shells with uniform angular sampling to ensure proper representation
+! of f-orbitals (l=3) which require m up to ±3. This prevents angular aliasing
+! artifacts. Minimum of 12 directions per shell guarantees exact cancellation
+! of cos(m*phi) and sin(m*phi) sums for m=1,2,3.
+!
+  call rebuild_gper_shells()
+
+  ! Warn if lorb is true, as FFT mesh correspondence is lost after reconstruction
+  if (lorb) then
+    WRITE( stdout,'(5x,a)') 'WARNING: lorb=.true. with uniform G-shell reconstruction.'
+    WRITE( stdout,'(5x,a)') '         FFT mesh correspondence (nl_2d) is not preserved.'
+    WRITE( stdout,'(5x,a)') '         Scattering state plotting may not work correctly.'
+  endif
+
   WRITE( stdout,*) 'ngper, shell number = ', ngper, ngpsh
 
   deallocate(gnorm2)
   deallocate(nshell)
 
   return
+
+contains
+
+!
+! Subroutine to rebuild G-shells with uniform angular sampling
+!
+  subroutine rebuild_gper_shells()
+    implicit none
+    integer, parameter :: NPHI_MIN = 12
+    integer :: ish, nphi, total_new, igoff, j
+    real(DP) :: gabs_native, phi, twopi, c, s
+    real(DP), allocatable :: gper_new(:,:)
+    integer, allocatable :: ninsh_new(:)
+
+    ! Calculate total number of new vectors
+    total_new = 0
+    do ish = 1, ngpsh
+      total_new = total_new + max(ninsh(ish), NPHI_MIN)
+    enddo
+
+    ! Allocate temporary arrays
+    allocate(gper_new(2, total_new))
+    allocate(ninsh_new(ngpsh))
+
+    ! Rebuild each shell with uniform angular sampling
+    igoff = 0
+    twopi = 2.0_DP * acos(-1.0_DP)
+    
+    do ish = 1, ngpsh
+      nphi = max(ninsh(ish), NPHI_MIN)
+      ninsh_new(ish) = nphi
+
+      ! gnsh(ish) is |g| in tpiba units; convert back to native units
+      gabs_native = gnsh(ish) / tpiba
+
+      ! Generate uniform ring of directions
+      do j = 0, nphi-1
+        phi = twopi * real(j, DP) / real(nphi, DP)
+        c = cos(phi)
+        s = sin(phi)
+        gper_new(1, igoff + j + 1) = gabs_native * c
+        gper_new(2, igoff + j + 1) = gabs_native * s
+      enddo
+
+      igoff = igoff + nphi
+    enddo
+
+    ! Replace old gper with the rebuilt shells
+    deallocate(gper)
+    allocate(gper(2, total_new))
+    gper(:,:) = gper_new(:,:)
+    deallocate(gper_new)
+
+    ! Update ninsh with new counts
+    ninsh(:) = ninsh_new(:)
+    deallocate(ninsh_new)
+
+    ! Update total number of perpendicular G vectors
+    ngper = total_new
+
+    ! Reallocate nl_2d arrays if they exist (lorb case)
+    ! Note: These are not populated with FFT mesh indices after reconstruction
+    if (lorb) then
+      deallocate(nl_2ds, nl_2d)
+      allocate(nl_2ds(npol*ngper))
+      allocate(nl_2d(npol*ngper))
+      ! Initialize to zero (FFT mesh correspondence is lost)
+      nl_2ds = 0
+      nl_2d = 0
+    endif
+
+  end subroutine rebuild_gper_shells
+
 end subroutine init_gper
