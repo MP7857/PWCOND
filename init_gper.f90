@@ -188,7 +188,7 @@ contains
 
     ! Rebuild each shell with uniform angular sampling
     igoff = 0
-    twopi = 8.0_DP * atan(1.0_DP)  ! More conventional definition of 2*pi
+    twopi = 2.0_DP * acos(-1.0_DP)
     
     do ish = 1, ngpsh
       nphi = max(ninsh(ish), NPHI_MIN)
@@ -223,7 +223,9 @@ contains
     ngper = total_new
 
     ! Reallocate nl_2d arrays if they exist (lorb case)
-    ! Note: These are not populated with FFT mesh indices after reconstruction
+    ! Note: These arrays were originally allocated with size npol*ngper (old value)
+    ! at lines 73-74, so they are safe to deallocate here.
+    ! They are not populated with FFT mesh indices after reconstruction.
     if (lorb) then
       deallocate(nl_2ds, nl_2d)
       allocate(nl_2ds(npol*ngper))
