@@ -133,19 +133,10 @@ subroutine init_gper(ik)
   ninsh(1)=igper
 
 !
-! Rebuild shells with uniform angular sampling to ensure proper representation
-! of f-orbitals (l=3) which require m up to ±3. This prevents angular aliasing
-! artifacts. Minimum of 12 directions per shell guarantees exact cancellation
-! of cos(m*phi) and sin(m*phi) sums for m=1,2,3.
+! Augment shells with fewer than 12 points for better f-orbital angular sampling
+! Keep original FFT mesh points and add uniformly-distributed points to reach 12
 !
-  call rebuild_gper_shells()
-
-  ! Warn if lorb is true, as FFT mesh correspondence is lost after reconstruction
-  if (lorb) then
-    WRITE( stdout,'(5x,a)') 'WARNING: lorb=.true. with uniform G-shell reconstruction.'
-    WRITE( stdout,'(5x,a)') '         FFT mesh correspondence (nl_2d) is not preserved.'
-    WRITE( stdout,'(5x,a)') '         Scattering state plotting may not work correctly.'
-  endif
+  call augment_gper_shells()
 
   WRITE( stdout,*) 'ngper, shell number = ', ngper, ngpsh
 
@@ -157,61 +148,82 @@ subroutine init_gper(ik)
 contains
 
 !
-! Subroutine to rebuild G-shells with uniform angular sampling
+! Subroutine to augment G-shells with additional points for angular sampling
 !
-  subroutine rebuild_gper_shells()
+  subroutine augment_gper_shells()
     implicit none
     integer, parameter :: NPHI_MIN = 12
-    integer :: ish, nphi, total_new, igoff, j, nshells_padded
+    integer :: ish, nphi_add, total_add, igoff, j, shell_start, shell_end
+    integer :: nshells_augmented, old_ngper
     real(DP) :: gabs_native, phi, twopi, c, s
     real(DP), allocatable :: gper_new(:,:)
     integer, allocatable :: ninsh_new(:)
+    integer, allocatable :: nl_2ds_old(:), nl_2d_old(:)
 
-    ! Calculate total number of new vectors and count shells that need padding
-    total_new = 0
-    nshells_padded = 0
+    ! Calculate total number of additional vectors needed
+    total_add = 0
+    nshells_augmented = 0
     do ish = 1, ngpsh
-      nphi = max(ninsh(ish), NPHI_MIN)
-      total_new = total_new + nphi
-      if (ninsh(ish) < NPHI_MIN) nshells_padded = nshells_padded + 1
+      if (ninsh(ish) < NPHI_MIN) then
+        total_add = total_add + (NPHI_MIN - ninsh(ish))
+        nshells_augmented = nshells_augmented + 1
+      endif
     enddo
 
-    ! Report reconstruction statistics
-    WRITE( stdout,'(5x,a,i4,a,i4)') &
-      'Rebuilding G-shells: ', nshells_padded, ' of ', ngpsh
-    WRITE( stdout,'(5x,a,i6,a,i6)') &
-      'Vectors: ', ngper, ' -> ', total_new
+    ! If no augmentation needed, return
+    if (total_add == 0) then
+      WRITE( stdout,'(5x,a)') 'All G-shells have sufficient angular sampling (>=12 points)'
+      return
+    endif
 
-    ! Allocate temporary arrays
-    allocate(gper_new(2, total_new))
+    ! Report augmentation statistics
+    WRITE( stdout,'(5x,a,i4,a,i4,a)') &
+      'Augmenting ', nshells_augmented, ' of ', ngpsh, ' G-shells to 12 points'
+    WRITE( stdout,'(5x,a,i6,a,i6,a,i6,a)') &
+      'Adding ', total_add, ' vectors (', ngper, ' -> ', ngper + total_add, ')'
+
+    ! Allocate temporary array for augmented gper
+    allocate(gper_new(2, ngper + total_add))
     allocate(ninsh_new(ngpsh))
 
-    ! Rebuild each shell with uniform angular sampling
+    ! Copy original points and add uniform points for undersampled shells
     igoff = 0
+    shell_start = 1
     twopi = 2.0_DP * acos(-1.0_DP)
     
     do ish = 1, ngpsh
-      nphi = max(ninsh(ish), NPHI_MIN)
-      ninsh_new(ish) = nphi
-
-      ! gnsh(ish) is |g| in tpiba units; convert back to native units
-      gabs_native = gnsh(ish) / tpiba
-
-      ! Generate uniform ring of directions
-      do j = 0, nphi-1
-        phi = twopi * real(j, DP) / real(nphi, DP)
-        c = cos(phi)
-        s = sin(phi)
-        gper_new(1, igoff + j + 1) = gabs_native * c
-        gper_new(2, igoff + j + 1) = gabs_native * s
-      enddo
-
-      igoff = igoff + nphi
+      shell_end = shell_start + ninsh(ish) - 1
+      
+      ! Copy original points from this shell
+      gper_new(:, igoff+1:igoff+ninsh(ish)) = gper(:, shell_start:shell_end)
+      igoff = igoff + ninsh(ish)
+      
+      ! Add uniform points if this shell has fewer than NPHI_MIN points
+      if (ninsh(ish) < NPHI_MIN) then
+        nphi_add = NPHI_MIN - ninsh(ish)
+        gabs_native = gnsh(ish) / tpiba
+        
+        ! Generate additional uniform points
+        do j = 0, nphi_add - 1
+          phi = twopi * real(ninsh(ish) + j, DP) / real(NPHI_MIN, DP)
+          c = cos(phi)
+          s = sin(phi)
+          gper_new(1, igoff + j + 1) = gabs_native * c
+          gper_new(2, igoff + j + 1) = gabs_native * s
+        enddo
+        
+        igoff = igoff + nphi_add
+        ninsh_new(ish) = NPHI_MIN
+      else
+        ninsh_new(ish) = ninsh(ish)
+      endif
+      
+      shell_start = shell_end + 1
     enddo
 
-    ! Replace old gper with the rebuilt shells
+    ! Replace old gper with augmented version
     deallocate(gper)
-    allocate(gper(2, total_new))
+    allocate(gper(2, ngper + total_add))
     gper(:,:) = gper_new(:,:)
     deallocate(gper_new)
 
@@ -220,21 +232,32 @@ contains
     deallocate(ninsh_new)
 
     ! Update total number of perpendicular G vectors
-    ngper = total_new
+    old_ngper = ngper
+    ngper = ngper + total_add
 
     ! Reallocate nl_2d arrays if they exist (lorb case)
-    ! Note: These arrays were originally allocated with size npol*ngper (old value)
-    ! at lines 73-74, so they are safe to deallocate here.
-    ! They are not populated with FFT mesh indices after reconstruction.
     if (lorb) then
+      ! Save the original mappings
+      allocate(nl_2ds_old(npol*old_ngper))
+      allocate(nl_2d_old(npol*old_ngper))
+      nl_2ds_old(:) = nl_2ds(1:npol*old_ngper)
+      nl_2d_old(:) = nl_2d(1:npol*old_ngper)
+      
       deallocate(nl_2ds, nl_2d)
       allocate(nl_2ds(npol*ngper))
       allocate(nl_2d(npol*ngper))
-      ! Initialize to zero (FFT mesh correspondence is lost)
-      nl_2ds = 0
-      nl_2d = 0
+      
+      ! Restore original mappings
+      nl_2ds(1:npol*old_ngper) = nl_2ds_old(:)
+      nl_2d(1:npol*old_ngper) = nl_2d_old(:)
+      
+      ! Set added entries to zero (no FFT mesh correspondence)
+      nl_2ds(npol*old_ngper+1:npol*ngper) = 0
+      nl_2d(npol*old_ngper+1:npol*ngper) = 0
+      
+      deallocate(nl_2ds_old, nl_2d_old)
     endif
 
-  end subroutine rebuild_gper_shells
+  end subroutine augment_gper_shells
 
 end subroutine init_gper
