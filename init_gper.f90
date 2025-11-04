@@ -162,16 +162,25 @@ contains
   subroutine rebuild_gper_shells()
     implicit none
     integer, parameter :: NPHI_MIN = 12
-    integer :: ish, nphi, total_new, igoff, j
+    integer :: ish, nphi, total_new, igoff, j, nshells_padded
     real(DP) :: gabs_native, phi, twopi, c, s
     real(DP), allocatable :: gper_new(:,:)
     integer, allocatable :: ninsh_new(:)
 
-    ! Calculate total number of new vectors
+    ! Calculate total number of new vectors and count shells that need padding
     total_new = 0
+    nshells_padded = 0
     do ish = 1, ngpsh
-      total_new = total_new + max(ninsh(ish), NPHI_MIN)
+      nphi = max(ninsh(ish), NPHI_MIN)
+      total_new = total_new + nphi
+      if (ninsh(ish) < NPHI_MIN) nshells_padded = nshells_padded + 1
     enddo
+
+    ! Report reconstruction statistics
+    WRITE( stdout,'(5x,a,i4,a,i4)') &
+      'Rebuilding G-shells: ', nshells_padded, ' of ', ngpsh
+    WRITE( stdout,'(5x,a,i6,a,i6)') &
+      'Vectors: ', ngper, ' -> ', total_new
 
     ! Allocate temporary arrays
     allocate(gper_new(2, total_new))
