@@ -188,7 +188,7 @@ contains
 
     ! Rebuild each shell with uniform angular sampling
     igoff = 0
-    twopi = 2.0_DP * acos(-1.0_DP)
+    twopi = 8.0_DP * atan(1.0_DP)  ! More conventional definition of 2*pi
     
     do ish = 1, ngpsh
       nphi = max(ninsh(ish), NPHI_MIN)
