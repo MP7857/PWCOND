@@ -296,8 +296,8 @@ implicit none
     else
       g2_avg = -1.0_dp
     endif
-    write(*,'(A,1x,i1,1x,i2,1x,ES16.6,1x,i6)') &
-         'WLM_SUMMARY l m <g2> nz=', lb, m_idx-1-lb, g2_avg, nz1
+    write(*,'(A,1x,i1,1x,i1,1x,ES16.6,1x,i6)') &
+         'WLM_SUMMARY l ch <g2> nz=', lb, m_idx, g2_avg, nz1
   enddo
 
   deallocate(x1)
