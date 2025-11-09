@@ -44,12 +44,13 @@ subroutine four(w0, z0, dz, tblm, taunew, r, rab, betar)
 implicit none
 
   integer :: kz, ig, ign, igphi, &
-             indexr, iz, lb, ir, nmesh, nmeshs, tblm(4)
+             indexr, iz, lb, ir, nmesh, nmeshs, tblm(4), m_idx, mdim
   real(DP), parameter :: eps=1.d-8
   complex(DP), parameter :: cim=(0.d0, 1.d0)
   real(DP) :: gn, s1, s2, s3, s4, cs, sn, cs2, sn2, cs3, sn3, rz, dz1, zr, &
                    dr, z0, dz,  bessj, taunew(4), r(ndmx),         &
-                   rab(ndmx), betar(ndmx)
+                   rab(ndmx), betar(ndmx), &
+                   sum_w2, sum_g2w2, g2_avg, gmag2, w2
   real(DP), allocatable :: x1(:), x2(:), x3(:), x4(:), x5(:), x6(:)
   real(DP), allocatable :: fx1(:), fx2(:), fx3(:), fx4(:), fx5(:), fx6(:), zsl(:)
   complex(DP) :: w0(nz1, ngper, 7)
@@ -273,6 +274,30 @@ implicit none
         w0(kz,ig,7)=-cim*s1*t7
       endif
     enddo
+  enddo
+
+!
+! Compute and print WLM_SUMMARY: ⟨g²⟩ per (l,m) channel
+!
+  mdim = 2*lb + 1
+  do m_idx = 1, mdim
+    sum_w2   = 0.0_dp
+    sum_g2w2 = 0.0_dp
+    do kz = 1, nz1
+      do ig = 1, ngper
+        gmag2 = (gper(1,ig)*tpiba)**2 + (gper(2,ig)*tpiba)**2
+        w2    = real(w0(kz,ig,m_idx))**2 + aimag(w0(kz,ig,m_idx))**2
+        sum_w2   = sum_w2   + w2
+        sum_g2w2 = sum_g2w2 + gmag2 * w2
+      enddo
+    enddo
+    if (sum_w2 > 0.0_dp) then
+      g2_avg = sum_g2w2 / sum_w2
+    else
+      g2_avg = -1.0_dp
+    endif
+    write(*,'(A,1x,i1,1x,i2,1x,ES16.6,1x,i6)') &
+         'WLM_SUMMARY l m <g2> nz=', lb, m_idx-1-lb, g2_avg, nz1
   enddo
 
   deallocate(x1)
