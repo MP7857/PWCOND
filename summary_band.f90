@@ -103,16 +103,16 @@ subroutine summary_band(ik,ien)
 !
   WRITE( stdout,*) 'Nchannels of the left tip = ', nchanl
   WRITE( stdout,*) 'Right moving states:'
-  WRITE( stdout,'(2x, a10, 2x, a10, 2x, a10)') 'k1(2pi/a)',  &
-                               'k2(2pi/a)', 'E-Ef (eV)'
+  WRITE( stdout,'(2x, a10, 2x, a10, 2x, a10)') 'Re(kz)',  &
+                               'Im(kz)', 'E-Ef (eV)'
   do i = 1, nchanl
     WRITE( stdout,'(3f12.7)')  DBLE(kvall(i)), AIMAG(kvall(i)), eev
     WRITE( stdout,'(A,1x,F12.6,1x,2F12.6,1x,2F16.8,1x,A,i3)') &
          'CBS_KZ', eev, xyk(1,ik), xyk(2,ik), DBLE(kvall(i)), AIMAG(kvall(i)), 'l=', -1
   enddo
   WRITE( stdout,*) 'Left moving states:'
-  WRITE( stdout,'(2x, a10, 2x, a10, 2x, a10)') 'k1(2pi/a)',  &
-                               'k2(2pi/a)', 'E-Ef (eV)'
+  WRITE( stdout,'(2x, a10, 2x, a10, 2x, a10)') 'Re(kz)',  &
+                               'Im(kz)', 'E-Ef (eV)'
   do i = nstl+1, nstl+nchanl
     WRITE( stdout,'(3f12.7)')  DBLE(kvall(i)), AIMAG(kvall(i)), eev
     WRITE( stdout,'(A,1x,F12.6,1x,2F12.6,1x,2F16.8,1x,A,i3)') &
@@ -122,16 +122,16 @@ subroutine summary_band(ik,ien)
   if(ikind.eq.2) then
     WRITE( stdout,*) 'Nchannels of the right tip = ', nchanr
     WRITE( stdout,*) 'Right moving states:'
-    WRITE( stdout,'(2x, a10, 2x, a10, 2x, a10)') 'k1(2pi/a)',  &
-                                 'k2(2pi/a)', 'E-Ef (eV)'
+    WRITE( stdout,'(2x, a10, 2x, a10, 2x, a10)') 'Re(kz)',  &
+                                 'Im(kz)', 'E-Ef (eV)'
     do i = 1, nchanr
       WRITE( stdout,'(3f12.7)')  DBLE(kvalr(i)), AIMAG(kvalr(i)), eev
       WRITE( stdout,'(A,1x,F12.6,1x,2F12.6,1x,2F16.8,1x,A,i3)') &
            'CBS_KZ', eev, xyk(1,ik), xyk(2,ik), DBLE(kvalr(i)), AIMAG(kvalr(i)), 'l=', -1
     enddo
     WRITE( stdout,*) 'Left moving states:'
-    WRITE( stdout,'(2x, a10, 2x, a10, 2x, a10)') 'k1(2pi/a)',  &
-                               'k2(2pi/a)', 'E-Ef (eV)'
+    WRITE( stdout,'(2x, a10, 2x, a10, 2x, a10)') 'Re(kz)',  &
+                               'Im(kz)', 'E-Ef (eV)'
     do i = nstr+1, nstr+nchanr
       WRITE( stdout,'(3f12.7)')  DBLE(kvalr(i)), AIMAG(kvalr(i)), eev
       WRITE( stdout,'(A,1x,F12.6,1x,2F12.6,1x,2F16.8,1x,A,i3)') &
