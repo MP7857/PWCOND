@@ -12,7 +12,7 @@
 !
 !
 subroutine scatter_forw(nrz, nrzp, z, psiper, zk, norb, tblm, cros, &
-                        taunew, r, rab, betar)
+                        taunew, r, rab, betar, ik, ien)
 !
 ! This subroutine computes local Phi_n and partial nonlocal Phi_alpha
 ! solutions of the Schrodinger equation in the region zin<z<zfin
@@ -35,7 +35,7 @@ subroutine scatter_forw(nrz, nrzp, z, psiper, zk, norb, tblm, cros, &
         cros(norb,nrz), &
         tblm(4,norb),   &
         k, kz, n, lam, ig, lam1, mdim, itt, nbb, iorb, iorb1,   &
-        iorba, iorb1a, is, kp, k1, nt, nb, kin, kfin
+        iorba, iorb1a, is, kp, k1, nt, nb, kin, kfin, ik, ien
   INTEGER :: i, j, kp1, info
   INTEGER, ALLOCATABLE :: ipiv(:), inslab(:)
   real(DP) :: z(nrz+1), r(1:ndmx,npsx), rab(1:ndmx,npsx),        &
@@ -177,7 +177,7 @@ subroutine scatter_forw(nrz, nrzp, z, psiper, zk, norb, tblm, cros, &
        nt = tblm(1,iorb)
        nb = tblm(2,iorb)
        call four(w0, z(k), dz, tblm(1,iorb), taunew(1,iorb),  &
-                 r(1,nt), rab(1,nt), betar(1,nb,nt))
+                 r(1,nt), rab(1,nt), betar(1,nb,nt), ik, ien)
        DO iorb1=1, norb
         IF(inslab(iorb1).EQ.iorb) THEN
          DO ig=1, ngper

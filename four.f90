@@ -8,7 +8,7 @@
 ! Modified by M. Pourfath (2025)
 ! Extended to include f-orbital (l = 3) calculations.
 !
-subroutine four(w0, z0, dz, tblm, taunew, r, rab, betar)
+subroutine four(w0, z0, dz, tblm, taunew, r, rab, betar, ik, ien)
 !
 ! This routine computes the bidimensional fourier transform of the
 ! beta function. It has been implemented for s, p, d, f-orbitals.
@@ -39,12 +39,13 @@ subroutine four(w0, z0, dz, tblm, taunew, r, rab, betar)
   USE constants, ONLY : tpi, fpi
   USE radial_grids, only : ndmx
   USE cell_base, ONLY : alat, tpiba
-  USE cond, ONLY : sarea, nz1, ngper, gper, ninsh, gnsh, ngpsh
+  USE cond, ONLY : sarea, nz1, ngper, gper, ninsh, gnsh, ngpsh, earr, xyk
 
 implicit none
 
   integer :: kz, ig, ign, igphi, &
-             indexr, iz, lb, ir, nmesh, nmeshs, tblm(4), m_idx, mdim
+             indexr, iz, lb, ir, nmesh, nmeshs, tblm(4), m_idx, mdim, &
+             ik, ien, m_val, abs_m
   real(DP), parameter :: eps=1.d-8
   complex(DP), parameter :: cim=(0.d0, 1.d0)
   real(DP) :: gn, s1, s2, s3, s4, cs, sn, cs2, sn2, cs3, sn3, rz, dz1, zr, &
@@ -296,8 +297,14 @@ implicit none
     else
       g2_avg = -1.0_dp
     endif
-    write(*,'(A,1x,i1,1x,i1,1x,ES16.6,1x,i6)') &
-         'WLM_SUMMARY l ch <g2> nz=', lb, m_idx, g2_avg, nz1
+    ! Compute m quantum number from channel index
+    m_val = m_idx - 1 - lb
+    abs_m = abs(m_val)
+    ! Print with full context: energy, k-perpendicular, l, m, g2, nz
+    write(*,'(A,F10.6,A,2F10.6,A,I1,A,I+2,A,I1,A,ES12.6,A,I4,A)') &
+         'WLM_SUMMARY E_eV=', earr(ien), ' k1=', xyk(1,ik), xyk(2,ik), &
+         ' l=', lb, ' m=', m_val, ' abs_m=', abs_m, ' g2=', g2_avg, &
+         ' nz=', nz1, ' units:g2=Bohr^-2 k=2pi/a'
   enddo
 
   deallocate(x1)

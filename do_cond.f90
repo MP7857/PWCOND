@@ -516,7 +516,7 @@ CALL mp_bcast( last_k, ionode_id, intra_image_comm )
       eryd = earr(ien)/rytoev + efl
       CALL form_zk(n2d, nrzpl, zkrl, zkl, eryd, tpiba)
       CALL scatter_forw(nrzl, nrzpl, zl, psiperl, zkl, norbl,     &
-                        tblml, crosl, taunewl, rl, rabl, betarl)
+                        tblml, crosl, taunewl, rl, rabl, betarl, ik, ien)
       CALL compbs(1, nocrosl, norbl, nchanl, kvall, kfunl, kfundl, &
                   kintl, kcoefl, ik, ien)
 
@@ -524,7 +524,7 @@ CALL mp_bcast( last_k, ionode_id, intra_image_comm )
         eryd = earr(ien)/rytoev + efr
         CALL form_zk(n2d, nrzpr, zkrr, zkr, eryd, tpiba)
         CALL scatter_forw(nrzr, nrzpr, zr, psiperr, zkr, norbr,    &
-                          tblmr, crosr, taunewr, rr, rabr, betarr)
+                          tblmr, crosr, taunewr, rr, rabr, betarr, ik, ien)
         CALL compbs(0, nocrosr, norbr, nchanr, kvalr, kfunr, kfundr,&
                      kintr, kcoefr, ik, ien)
       ENDIF
@@ -535,7 +535,7 @@ CALL mp_bcast( last_k, ionode_id, intra_image_comm )
          eryd = earr(ien)/rytoev + efs
          CALL form_zk(n2d, nrzps, zkrs, zks, eryd, tpiba)
          CALL scatter_forw(nrzs, nrzps, zs, psipers, zks, norbs,    &
-                          tblms, cross, taunews, rs, rabs, betars)
+                          tblms, cross, taunews, rs, rabs, betars, ik, ien)
 
          WRITE(stdout,*) 'to transmit'
          CALL transmit(ik, ien, tk, .true.)
