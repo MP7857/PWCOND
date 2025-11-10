@@ -301,7 +301,7 @@ implicit none
     m_val = m_idx - 1 - lb
     abs_m = abs(m_val)
     ! Print with full context: energy, k-perpendicular, l, m, g2, nz
-    write(*,'(A,F10.6,A,2F10.6,A,I1,A,I+2,A,I1,A,ES12.6,A,I4,A)') &
+    write(*,'(A,F10.6,A,2F10.6,A,I1,A,I3,A,I1,A,ES12.6,A,I4,A)') &
          'WLM_SUMMARY E_eV=', earr(ien), ' k1=', xyk(1,ik), xyk(2,ik), &
          ' l=', lb, ' m=', m_val, ' abs_m=', abs_m, ' g2=', g2_avg, &
          ' nz=', nz1, ' units:g2=Bohr^-2 k=2pi/a'
