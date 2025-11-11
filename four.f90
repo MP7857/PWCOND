@@ -342,6 +342,20 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
 ! Computes and prints Mode B: state-resolved and state-channel-resolved ⟨g²⟩
 ! Only executes if CBS eigenvector data is available.
 !
+! Mode B provides energy- and state-dependent transverse momentum analysis:
+!
+! MODE=B:STATE - State-resolved ⟨g²⟩:
+!   ⟨g²⟩^(n) = Σ_ig g²(ig) |C^(n)(ig)|² / Σ_ig |C^(n)(ig)|²
+!   where C^(n)(ig) are the CBS eigenvector components for state n
+!
+! MODE=B:STATE_LM - State and (l,m)-channel-resolved ⟨g²⟩ (separable approx):
+!   ⟨g²⟩^(n)_lm = Σ_ig g²(ig) |C^(n)(ig)|² (Σ_z |w0_lm(z,ig)|²) / norm
+!   where w0_lm is the Fourier transform of the beta function for orbital (l,m)
+!
+! This separable approximation weights each CBS state by its overlap with
+! different orbital characters, helping identify which states carry which
+! orbital character at different energies.
+!
   USE kinds, ONLY: DP
   USE cbs_store
   IMPLICIT NONE

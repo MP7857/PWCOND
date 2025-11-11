@@ -244,8 +244,9 @@ subroutine compbs(lleft, nocros, norb, nchan, kval, kfun,  &
               kfun, kfund, vec, kval, intw1, intw2, nchan, npol)
 !
 ! Extract and store CBS eigenvectors for Mode B calculations
+! Store eigenvectors for the left lead at each (ik, ien) point
 !
-  if (lleft.eq.1.and.ikk.eq.1.and.ien.eq.1) then
+  if (lleft.eq.1) then
     call store_cbs_eigenvectors_left(n2d, nocros, norb, npol, nchan, &
                                      vec, kfun)
   endif
@@ -458,8 +459,22 @@ subroutine store_cbs_eigenvectors_left(n2d, nocros, norb, npol, nchan, &
 !
 ! This subroutine extracts CBS eigenvectors and stores them in the
 ! cbs_store module for Mode B calculations.
+!
 ! For each eigenstate n, we extract the plane-wave coefficients from
-! kfun (which is already normalized and has been transformed).
+! kfun (which is already normalized and has been transformed by amat*vec).
+!
+! The kfun array has dimension (n2d, 2*(n2d+npol*nocros)) where:
+!   - n2d = ngper*npol (or ngper for collinear)
+!   - First index runs over perpendicular G-vectors (and spin if npol=2)
+!   - Second index runs over all CBS states (evanescent + propagating)
+!
+! We extract the plane-wave components and store them indexed by (kz, ig, n)
+! where:
+!   - kz = 1 (we only store boundary values, not z-resolved)
+!   - ig = 1..ngper (perpendicular G-vector index)
+!   - n = 1..(nstl+nchanl) (all CBS states)
+!
+! For noncollinear (npol=2), we sum over spin components to get spatial weights.
 !
   USE kinds, ONLY: DP
   USE cond, ONLY: nz1, ngper
