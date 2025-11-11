@@ -340,6 +340,7 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
 !-----------------------------------------------------------------------
 !
 ! Computes and prints Mode B: state-resolved and state-channel-resolved ⟨g²⟩
+! Only executes if CBS eigenvector data is available.
 !
   USE kinds, ONLY: DP
   USE cbs_store
@@ -357,7 +358,7 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
   !
   ! Check if CBS eigenvector data is available
   IF (.NOT. cbs_vec_l_ready) THEN
-    ! Fallback: no Mode B output
+    ! No CBS data available yet - this is expected on first calls
     RETURN
   ENDIF
   !
@@ -367,8 +368,9 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
     sum_w2   = 0.0_DP
     sum_g2w2 = 0.0_DP
     !
+    ! Loop over kz (which is 1 for boundary values) and ig
     DO kz = 1, nz1_m
-      DO ig = 1, ngper_m
+      DO ig = 1, MIN(ngper_m, ngper)
         gmag2 = (gper(1,ig)*tpiba)**2 + (gper(2,ig)*tpiba)**2
         c = cbs_vec_l(kz, ig, n)
         c2 = REAL(c*CONJG(c), DP)
@@ -404,31 +406,33 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
       sum_w2   = 0.0_DP
       sum_g2w2 = 0.0_DP
       !
-      DO kz = 1, MIN(nz1_m, nz1)
-        DO ig = 1, MIN(ngper_m, ngper)
-          gmag2 = (gper(1,ig)*tpiba)**2 + (gper(2,ig)*tpiba)**2
-          c = cbs_vec_l(kz, ig, n)
-          c2 = REAL(c*CONJG(c), DP)
-          !
-          ! Orbital shape weight |w0|²
-          IF (m_idx <= 7) THEN
-            w2lm = REAL(w0(kz,ig,m_idx)*CONJG(w0(kz,ig,m_idx)), DP)
-          ELSE
-            w2lm = 0.0_DP
-          ENDIF
-          !
-          ! Separable approximation: weight = |C|² × |w0|²
-          w2 = c2 * w2lm
-          !
-          ! Check for finite values
-          is_finite = (gmag2 < 1.0E30_DP) .AND. (w2 < 1.0E30_DP) .AND. &
-                      (gmag2 > -1.0E30_DP) .AND. (w2 > -1.0E30_DP)
-          !
-          IF (is_finite) THEN
-            sum_w2   = sum_w2   + w2
-            sum_g2w2 = sum_g2w2 + gmag2 * w2
-          ENDIF
-        ENDDO
+      ! Loop over perpendicular G-vectors
+      DO ig = 1, MIN(ngper_m, ngper)
+        gmag2 = (gper(1,ig)*tpiba)**2 + (gper(2,ig)*tpiba)**2
+        !
+        ! Get CBS state weight at this ig (from kz=1, the boundary)
+        c = cbs_vec_l(1, ig, n)
+        c2 = REAL(c*CONJG(c), DP)
+        !
+        ! Compute total orbital shape weight by summing over z
+        w2lm = 0.0_DP
+        IF (m_idx <= 7) THEN
+          DO kz = 1, nz1
+            w2lm = w2lm + REAL(w0(kz,ig,m_idx)*CONJG(w0(kz,ig,m_idx)), DP)
+          ENDDO
+        ENDIF
+        !
+        ! Separable approximation: weight = |C|² × Σ_z |w0|²
+        w2 = c2 * w2lm
+        !
+        ! Check for finite values
+        is_finite = (gmag2 < 1.0E30_DP) .AND. (w2 < 1.0E30_DP) .AND. &
+                    (gmag2 > -1.0E30_DP) .AND. (w2 > -1.0E30_DP)
+        !
+        IF (is_finite) THEN
+          sum_w2   = sum_w2   + w2
+          sum_g2w2 = sum_g2w2 + gmag2 * w2
+        ENDIF
       ENDDO
       !
       IF (sum_w2 > 0.0_DP) THEN

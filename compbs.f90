@@ -480,7 +480,7 @@ subroutine store_cbs_eigenvectors_left(n2d, nocros, norb, npol, nchan, &
   !
   ! Allocate storage for eigenvectors
   ! We set nz1_m = 1 since we only have boundary values, not z-resolved
-  CALL allocate_cbs_vec(1, ngper, nstl, nchanl)
+  CALL allocate_cbs_vec(1, ngper, nstl, nchan)
   !
   ! Extract eigenvector coefficients
   ! The kfun array contains the normalized plane-wave components
