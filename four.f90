@@ -380,12 +380,13 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
     REAL(DP) :: wt          ! State weight (norm)
   END TYPE state_row
   !
-  INTEGER :: n, kz, ig, m_idx, mdim, m_val, j, kept
+  INTEGER :: n, kz, ig, m_idx, mdim, m_val, j, kept, i
   REAL(DP) :: gmag2, sum_w2, sum_g2w2, g2_avg_state, g2_avg_lm_state
   REAL(DP) :: c2, w2lm, w2, kappa_j, wt_j
   COMPLEX(DP) :: c
   LOGICAL :: is_finite
   TYPE(state_row), ALLOCATABLE :: rows(:)
+  TYPE(state_row) :: key
   !
   ! Check if CBS eigenvector data is available
   IF (.NOT. cbs_vec_l_ready) THEN
@@ -441,7 +442,17 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
   ENDDO
   !
   ! Sort states by kappa (ascending = slowest decay first)
-  CALL sort_states_by_kappa(rows, ntot_m)
+  ! Simple insertion sort
+  DO i = 2, ntot_m
+    key = rows(i)
+    j = i - 1
+    DO WHILE (j >= 1)
+      IF (rows(j)%kappa <= key%kappa) EXIT
+      rows(j+1) = rows(j)
+      j = j - 1
+    ENDDO
+    rows(j+1) = key
+  ENDDO
   !
   ! Print only the NKEEP slowest-decaying states that pass filters
   kept = 0
@@ -476,28 +487,6 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
   ! ENDDO
   !
   RETURN
-
-CONTAINS
-
-  ! Helper subroutine to sort states by kappa (ascending order)
-  SUBROUTINE sort_states_by_kappa(a, n)
-    TYPE(state_row), INTENT(INOUT) :: a(:)
-    INTEGER, INTENT(IN) :: n
-    INTEGER :: i, j
-    TYPE(state_row) :: key
-    !
-    ! Simple insertion sort (sufficient for small arrays)
-    DO i = 2, n
-      key = a(i)
-      j = i - 1
-      DO WHILE (j >= 1)
-        IF (a(j)%kappa <= key%kappa) EXIT
-        a(j+1) = a(j)
-        j = j - 1
-      ENDDO
-      a(j+1) = key
-    ENDDO
-  END SUBROUTINE sort_states_by_kappa
 
 END SUBROUTINE compute_mode_b_g2
 
