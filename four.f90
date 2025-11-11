@@ -333,8 +333,9 @@ implicit none
   deallocate(wadd3)
 
   return
-end subroutine four
-!
+
+CONTAINS
+
 !-----------------------------------------------------------------------
 subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
 !-----------------------------------------------------------------------
@@ -464,6 +465,9 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
   RETURN
 END SUBROUTINE compute_mode_b_g2
 
+end subroutine four
+!
+!-----------------------------------------------------------------------
 function indexr(zz, ndim, r)
   USE kinds, only : DP
   implicit none
