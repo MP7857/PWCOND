@@ -243,6 +243,13 @@ subroutine compbs(lleft, nocros, norb, nchan, kval, kfun,  &
   call jbloch(2*(n2d+npol*nocros), n2d, norbf, norb, nocros,  &
               kfun, kfund, vec, kval, intw1, intw2, nchan, npol)
 !
+! Extract and store CBS eigenvectors for Mode B calculations
+!
+  if (lleft.eq.1.and.ikk.eq.1.and.ien.eq.1) then
+    call store_cbs_eigenvectors_left(n2d, nocros, norb, npol, nchan, &
+                                     vec, kfun)
+  endif
+!
 ! To save band structure result
 !
   kfun=(0.d0,0.d0)
@@ -443,3 +450,81 @@ subroutine compbs(lleft, nocros, norb, nchan, kval, kfun,  &
 
   return
 end subroutine compbs
+!
+!-----------------------------------------------------------------------
+subroutine store_cbs_eigenvectors_left(n2d, nocros, norb, npol, nchan, &
+                                       vec, kfun)
+!-----------------------------------------------------------------------
+!
+! This subroutine extracts CBS eigenvectors and stores them in the
+! cbs_store module for Mode B calculations.
+! For each eigenstate n, we extract the plane-wave coefficients from
+! kfun (which is already normalized and has been transformed).
+!
+  USE kinds, ONLY: DP
+  USE cond, ONLY: nz1, ngper
+  USE cbs_store
+  IMPLICIT NONE
+  !
+  INTEGER, INTENT(IN) :: n2d, nocros, norb, npol, nchan
+  COMPLEX(DP), INTENT(IN) :: vec(2*n2d+npol*norb, 2*(n2d+npol*nocros))
+  COMPLEX(DP), INTENT(IN) :: kfun(n2d, 2*(n2d+npol*nocros))
+  !
+  INTEGER :: n, ig, ispol, idx, nstl, ntot
+  REAL(DP) :: sumw, norm
+  COMPLEX(DP) :: c, weight
+  !
+  ! Total number of states
+  nstl = n2d + npol*nocros
+  ntot = 2*(n2d + npol*nocros)
+  !
+  ! Allocate storage for eigenvectors
+  ! We set nz1_m = 1 since we only have boundary values, not z-resolved
+  CALL allocate_cbs_vec(1, ngper, nstl, nchanl)
+  !
+  ! Extract eigenvector coefficients
+  ! The kfun array contains the normalized plane-wave components
+  ! kfun(ig, n) for ig=1..n2d, n=1..ntot
+  !
+  DO n = 1, ntot
+    sumw = 0.0_DP
+    !
+    ! For each perpendicular G-vector
+    DO ig = 1, ngper
+      weight = (0.0_DP, 0.0_DP)
+      !
+      ! Sum over spin components if npol=2
+      DO ispol = 1, npol
+        idx = (ig-1)*npol + ispol
+        IF (idx <= n2d) THEN
+          c = kfun(idx, n)
+          ! Sum spin-resolved amplitudes to get spatial density
+          weight = weight + c * CONJG(c)
+        ENDIF
+      ENDDO
+      !
+      ! Take square root to get amplitude from density
+      ! This is a simplification; alternatively could keep one spin component
+      IF (npol == 2) THEN
+        weight = SQRT(weight)
+      ELSE
+        weight = kfun(ig, n)
+      ENDIF
+      !
+      ! Store in cbs_vec_l(kz=1, ig, n) since we only have boundary values
+      cbs_vec_l(1, ig, n) = weight
+      sumw = sumw + REAL(weight*CONJG(weight), DP)
+    ENDDO
+    !
+    ! Normalize within the plane-wave subspace
+    IF (sumw > 0.0_DP) THEN
+      norm = 1.0_DP / SQRT(sumw)
+      cbs_vec_l(1, :, n) = cbs_vec_l(1, :, n) * norm
+    ENDIF
+  ENDDO
+  !
+  ! Mark as ready
+  cbs_vec_l_ready = .TRUE.
+  !
+  RETURN
+END SUBROUTINE store_cbs_eigenvectors_left

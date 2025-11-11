@@ -278,34 +278,42 @@ implicit none
   enddo
 
 !
-! Compute and print WLM_SUMMARY: ⟨g²⟩ per (l,m) channel
+! Compute and print WLM_SUMMARY: ⟨g²⟩ per (l,m) channel (Mode A)
 !
   mdim = 2*lb + 1
-  do m_idx = 1, mdim
-    sum_w2   = 0.0_dp
-    sum_g2w2 = 0.0_dp
-    do kz = 1, nz1
-      do ig = 1, ngper
-        gmag2 = (gper(1,ig)*tpiba)**2 + (gper(2,ig)*tpiba)**2
-        w2    = real(w0(kz,ig,m_idx))**2 + aimag(w0(kz,ig,m_idx))**2
-        sum_w2   = sum_w2   + w2
-        sum_g2w2 = sum_g2w2 + gmag2 * w2
+  ! Only print Mode A once for reference (at first energy and k-point)
+  if (ien.eq.1 .and. ik.eq.1) then
+    do m_idx = 1, mdim
+      sum_w2   = 0.0_dp
+      sum_g2w2 = 0.0_dp
+      do kz = 1, nz1
+        do ig = 1, ngper
+          gmag2 = (gper(1,ig)*tpiba)**2 + (gper(2,ig)*tpiba)**2
+          w2    = real(w0(kz,ig,m_idx))**2 + aimag(w0(kz,ig,m_idx))**2
+          sum_w2   = sum_w2   + w2
+          sum_g2w2 = sum_g2w2 + gmag2 * w2
+        enddo
       enddo
+      if (sum_w2 > 0.0_dp) then
+        g2_avg = sum_g2w2 / sum_w2
+      else
+        g2_avg = -1.0_dp
+      endif
+      ! Compute m quantum number from channel index
+      m_val = m_idx - 1 - lb
+      abs_m = abs(m_val)
+      ! Print with full context: energy, k-perpendicular, l, m, g2, nz
+      write(*,'(A,1x,A,1x,F9.3,1x,A,2F10.6,1x,A,I2,1x,A,I2,1x,A,ES20.10,1x,A)') &
+           'WLM_SUMMARY', 'MODE=A:LM', earr(ien), 'k1,k2=', xyk(1,ik), xyk(2,ik), &
+           'l=', lb, 'm=', m_val, 'g2=', g2_avg, 'units:g2=Bohr^-2'
     enddo
-    if (sum_w2 > 0.0_dp) then
-      g2_avg = sum_g2w2 / sum_w2
-    else
-      g2_avg = -1.0_dp
-    endif
-    ! Compute m quantum number from channel index
-    m_val = m_idx - 1 - lb
-    abs_m = abs(m_val)
-    ! Print with full context: energy, k-perpendicular, l, m, g2, nz
-    write(*,'(A,F10.6,A,2F10.6,A,I1,A,I3,A,I1,A,ES20.10,A,I4,A)') &
-         'WLM_SUMMARY E_eV=', earr(ien), ' k1=', xyk(1,ik), xyk(2,ik), &
-         ' l=', lb, ' m=', m_val, ' abs_m=', abs_m, ' g2=', g2_avg, &
-         ' nz=', nz1, ' units:g2=Bohr^-2 k=2pi/a'
-  enddo
+  endif
+
+!
+! Mode B: State-resolved and state-channel-resolved ⟨g²⟩
+!
+  call compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, earr(ien), xyk(:,ik))
+
 
   deallocate(x1)
   deallocate(x2)
@@ -326,6 +334,117 @@ implicit none
 
   return
 end subroutine four
+!
+!-----------------------------------------------------------------------
+subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
+!-----------------------------------------------------------------------
+!
+! Computes and prints Mode B: state-resolved and state-channel-resolved ⟨g²⟩
+!
+  USE kinds, ONLY: DP
+  USE cbs_store
+  IMPLICIT NONE
+  !
+  INTEGER, INTENT(IN) :: nz1, ngper, lb
+  REAL(DP), INTENT(IN) :: gper(2,ngper), tpiba, energy, xyk(2)
+  COMPLEX(DP), INTENT(IN) :: w0(nz1, ngper, 7)
+  !
+  INTEGER :: n, kz, ig, m_idx, mdim, m_val
+  REAL(DP) :: gmag2, sum_w2, sum_g2w2, g2_avg_state, g2_avg_lm_state
+  REAL(DP) :: c2, w2lm, w2
+  COMPLEX(DP) :: c
+  LOGICAL :: is_finite
+  !
+  ! Check if CBS eigenvector data is available
+  IF (.NOT. cbs_vec_l_ready) THEN
+    ! Fallback: no Mode B output
+    RETURN
+  ENDIF
+  !
+  ! Mode B.A: State-resolved ⟨g²⟩
+  !
+  DO n = 1, nstl_m + nchanl_m
+    sum_w2   = 0.0_DP
+    sum_g2w2 = 0.0_DP
+    !
+    DO kz = 1, nz1_m
+      DO ig = 1, ngper_m
+        gmag2 = (gper(1,ig)*tpiba)**2 + (gper(2,ig)*tpiba)**2
+        c = cbs_vec_l(kz, ig, n)
+        c2 = REAL(c*CONJG(c), DP)
+        !
+        ! Check for finite values
+        is_finite = (gmag2 < 1.0E30_DP) .AND. (c2 < 1.0E30_DP) .AND. &
+                    (gmag2 > -1.0E30_DP) .AND. (c2 > -1.0E30_DP)
+        !
+        IF (is_finite) THEN
+          sum_w2   = sum_w2   + c2
+          sum_g2w2 = sum_g2w2 + gmag2 * c2
+        ENDIF
+      ENDDO
+    ENDDO
+    !
+    IF (sum_w2 > 0.0_DP) THEN
+      g2_avg_state = sum_g2w2 / sum_w2
+    ELSE
+      g2_avg_state = -1.0_DP
+    ENDIF
+    !
+    WRITE(*,'(A,1x,A,1x,F9.3,1x,A,2F10.6,1x,A,I4,1x,A,ES20.10,1x,A)') &
+      'WLM_SUMMARY', 'MODE=B:STATE', energy, 'k1,k2=', xyk(1), xyk(2), &
+      'n=', n, 'g2=', g2_avg_state, 'units:g2=Bohr^-2'
+  ENDDO
+  !
+  ! Mode B.B: State and (l,m)-resolved ⟨g²⟩ using separable weights
+  !
+  mdim = 2*lb + 1
+  DO n = 1, nstl_m + nchanl_m
+    DO m_idx = 1, mdim
+      m_val = m_idx - 1 - lb
+      sum_w2   = 0.0_DP
+      sum_g2w2 = 0.0_DP
+      !
+      DO kz = 1, MIN(nz1_m, nz1)
+        DO ig = 1, MIN(ngper_m, ngper)
+          gmag2 = (gper(1,ig)*tpiba)**2 + (gper(2,ig)*tpiba)**2
+          c = cbs_vec_l(kz, ig, n)
+          c2 = REAL(c*CONJG(c), DP)
+          !
+          ! Orbital shape weight |w0|²
+          IF (m_idx <= 7) THEN
+            w2lm = REAL(w0(kz,ig,m_idx)*CONJG(w0(kz,ig,m_idx)), DP)
+          ELSE
+            w2lm = 0.0_DP
+          ENDIF
+          !
+          ! Separable approximation: weight = |C|² × |w0|²
+          w2 = c2 * w2lm
+          !
+          ! Check for finite values
+          is_finite = (gmag2 < 1.0E30_DP) .AND. (w2 < 1.0E30_DP) .AND. &
+                      (gmag2 > -1.0E30_DP) .AND. (w2 > -1.0E30_DP)
+          !
+          IF (is_finite) THEN
+            sum_w2   = sum_w2   + w2
+            sum_g2w2 = sum_g2w2 + gmag2 * w2
+          ENDIF
+        ENDDO
+      ENDDO
+      !
+      IF (sum_w2 > 0.0_DP) THEN
+        g2_avg_lm_state = sum_g2w2 / sum_w2
+      ELSE
+        g2_avg_lm_state = -1.0_DP
+      ENDIF
+      !
+      WRITE(*,'(A,1x,A,1x,F9.3,1x,A,2F10.6,1x,A,I4,1x,A,I2,1x,A,I2,1x,A,ES20.10,1x,A)') &
+        'WLM_SUMMARY', 'MODE=B:STATE_LM', energy, 'k1,k2=', xyk(1), xyk(2), &
+        'n=', n, 'l=', lb, 'm=', m_val, 'g2=', g2_avg_lm_state, 'units:g2=Bohr^-2'
+    ENDDO
+  ENDDO
+  !
+  RETURN
+END SUBROUTINE compute_mode_b_g2
 
 function indexr(zz, ndim, r)
   USE kinds, only : DP
