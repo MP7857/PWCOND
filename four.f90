@@ -359,6 +359,20 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk, ien, 
 !
 ! Output is filtered to keep only physically relevant states (slowest decay).
 !
+! FILTERING STRATEGY (following problem statement recommendations):
+!   1. Keep only NKEEP states with smallest Im(k_z) = κ at each energy
+!   2. Filter by KAPPA_MAX threshold (only states with κ ≤ KAPPA_MAX)
+!   3. Skip states with negligible norm (weight < MIN_WT)
+!   4. Energy stride: process every ENERGY_STRIDE-th energy point
+!   5. Optional CSV output for analysis-friendly data format
+!
+! UNITS:
+!   - Input: kvall in units of 2π/a, gper in reciprocal lattice units
+!   - Output: κ and Im(k_z) in Bohr^-1, g² in Bohr^-2
+!   - Conversion: κ = |Im(kvall)| × tpiba where tpiba = 2π/a [Bohr^-1]
+!   - To convert g² to Å^-2: multiply by (1 Bohr / 0.529177 Å)² ≈ 3.57106
+!
+!
   USE kinds, ONLY: DP
   USE cond, ONLY: nz1_m, ngper_m, nstl_m, nchanl_m, ntot_m, cbs_vec_l, cbs_vec_l_ready, kvall
   IMPLICIT NONE
@@ -443,6 +457,17 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk, ien, 
   ! Mode B.A: State-resolved ⟨g²⟩ with filtering and sorting
   ! First pass: compute g2 and weights for all states
   !
+  ! IMPORTANT: The ⟨g²⟩ computation is over the plane-wave (transverse g-grid)
+  ! components of the CBS eigenvectors. This is consistent with the physics
+  ! of transverse momentum content. If the basis has local/projector parts,
+  ! they are not included in this calculation (as intended).
+  !
+  ! The denominator (sum_w2 = Σ|C^(n)(ig)|²) represents the norm of the
+  ! plane-wave part of the eigenvector. This should be close to 1 if the
+  ! eigenvector is properly normalized, but may be smaller if local parts
+  ! carry significant weight. The MIN_WT threshold guards against states
+  ! with negligible plane-wave content.
+  !
   ALLOCATE(rows(ntot_m))
   !
   DO n = 1, ntot_m
@@ -450,13 +475,15 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk, ien, 
     sum_g2w2 = 0.0_DP
     !
     ! Loop over kz (which is 1 for boundary values) and ig
+    ! CRITICAL: Use the SAME ig-set for both numerator and denominator
+    ! to ensure proper normalization (as warned in problem statement)
     DO kz = 1, nz1_m
       DO ig = 1, MIN(ngper_m, ngper)
         gmag2 = (gper(1,ig)*tpiba)**2 + (gper(2,ig)*tpiba)**2
         c = cbs_vec_l(kz, ig, n)
         c2 = REAL(c*CONJG(c), DP)
         !
-        ! Check for finite values
+        ! Check for finite values (guard against NaN/Inf)
         is_finite = (gmag2 < 1.0E30_DP) .AND. (c2 < 1.0E30_DP) .AND. &
                     (gmag2 > -1.0E30_DP) .AND. (c2 > -1.0E30_DP)
         !
@@ -474,6 +501,8 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk, ien, 
     ENDIF
     !
     ! Compute kappa (decay constant) in Bohr^-1
+    ! Unit verification: kvall stores k in units of 2π/a, so multiplying by
+    ! tpiba = 2π/a [Bohr^-1] gives kappa in Bohr^-1 as required
     IF (n <= SIZE(kvall)) THEN
       kappa_j = ABS(AIMAG(kvall(n))) * tpiba
     ELSE
@@ -488,7 +517,16 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk, ien, 
   ENDDO
   !
   ! Sort states by kappa (ascending = slowest decay first)
-  ! Simple insertion sort
+  ! The slowest-decaying states (smallest κ = Im(k_z)) are most relevant
+  ! for tunneling transport. Simple insertion sort is sufficient for typical
+  ! number of states (~tens to hundreds).
+  !
+  ! SANITY CHECK (recommended in problem statement):
+  ! - Physical expectation: larger κ should correlate with larger ⟨g²⟩
+  !   (states with more transverse momentum decay faster)
+  ! - At fixed energy, verify states are sorted by increasing κ
+  ! - Across energies, same dominant mode's ⟨g²⟩ should vary (not reused)
+  !
   DO i = 2, ntot_m
     key = rows(i)
     j = i - 1
