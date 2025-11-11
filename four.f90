@@ -312,7 +312,7 @@ implicit none
 !
 ! Mode B: State-resolved and state-channel-resolved ⟨g²⟩
 !
-  call compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, earr(ien), xyk(:,ik))
+  call compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, earr(ien), xyk(:,ik), ien, ik)
 
 
   deallocate(x1)
@@ -337,7 +337,7 @@ implicit none
 CONTAINS
 
 !-----------------------------------------------------------------------
-subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
+subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk, ien, ik)
 !-----------------------------------------------------------------------
 !
 ! Computes and prints Mode B: state-resolved and state-channel-resolved ⟨g²⟩
@@ -363,14 +363,38 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
   USE cond, ONLY: nz1_m, ngper_m, nstl_m, nchanl_m, ntot_m, cbs_vec_l, cbs_vec_l_ready, kvall
   IMPLICIT NONE
   !
-  INTEGER, INTENT(IN) :: nz1, ngper, lb
+  INTEGER, INTENT(IN) :: nz1, ngper, lb, ien, ik
   REAL(DP), INTENT(IN) :: gper(2,ngper), tpiba, energy, xyk(2)
   COMPLEX(DP), INTENT(IN) :: w0(nz1, ngper, 7)
   !
-  ! Output policy parameters
-  INTEGER, PARAMETER :: NKEEP = 8           ! Keep slowest-decaying N states
-  REAL(DP), PARAMETER :: KAPPA_MAX = 2.0_DP ! Max kappa in Bohr^-1; <=0 to disable
-  REAL(DP), PARAMETER :: MIN_WT = 1.0E-6_DP ! Min state weight threshold
+  ! Output policy parameters (user-configurable for filtering Mode B output)
+  !
+  ! NKEEP: Number of slowest-decaying states to keep at each energy
+  !        (states with smallest Im(k_z) = kappa are most relevant for tunneling)
+  INTEGER, PARAMETER :: NKEEP = 8
+  !
+  ! KAPPA_MAX: Maximum decay constant in Bohr^-1; set <=0 to disable
+  !            Only states with kappa <= KAPPA_MAX will be printed
+  !            Note: kappa = |Im(k_z)| * tpiba where tpiba = 2π/a [Bohr^-1]
+  REAL(DP), PARAMETER :: KAPPA_MAX = 2.0_DP
+  !
+  ! MIN_WT: Minimum state weight threshold (norm Σ|C^(n)(ig)|²)
+  !         States with weight < MIN_WT are skipped (numerically irrelevant)
+  REAL(DP), PARAMETER :: MIN_WT = 1.0E-6_DP
+  !
+  ! ENERGY_STRIDE: Print Mode B every N-th energy; set to 1 to print all
+  !                Use >1 to reduce output volume for dense energy scans
+  INTEGER, PARAMETER :: ENERGY_STRIDE = 1
+  !
+  ! ENABLE_CSV: Enable CSV output to separate file for Mode B data
+  !             CSV format: MODE,B,STATE,E_eV,k1,k2,n,Re_kz,Im_kz,g2_Bohrm2
+  LOGICAL, PARAMETER :: ENABLE_CSV = .FALSE.
+  !
+  ! Unit conversion for reference:
+  ! - g² is reported in Bohr^-2
+  ! - To convert to Å^-2: multiply by (1 Bohr / 0.529177 Å)^2 ≈ 3.57106
+  ! - kappa is reported in Bohr^-1
+  ! - kvall stores k-values in units of 2π/a, so kappa = |Im(kvall)| * tpiba
   !
   ! State sorting structure
   TYPE state_row
@@ -382,16 +406,38 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
   !
   INTEGER :: n, kz, ig, m_idx, mdim, m_val, j, kept, i
   REAL(DP) :: gmag2, sum_w2, sum_g2w2, g2_avg_state, g2_avg_lm_state
-  REAL(DP) :: c2, w2lm, w2, kappa_j, wt_j
+  REAL(DP) :: c2, w2lm, w2, kappa_j, wt_j, re_kz, im_kz
   COMPLEX(DP) :: c
   LOGICAL :: is_finite
   TYPE(state_row), ALLOCATABLE :: rows(:)
   TYPE(state_row) :: key
+  INTEGER, SAVE :: csv_unit = -1
+  LOGICAL, SAVE :: csv_opened = .FALSE.
+  INTEGER :: ios
   !
   ! Check if CBS eigenvector data is available
   IF (.NOT. cbs_vec_l_ready) THEN
     ! No CBS data available yet - this is expected on first calls
     RETURN
+  ENDIF
+  !
+  ! Apply energy stride filter - only process every ENERGY_STRIDE-th energy
+  IF (MOD(ien - 1, ENERGY_STRIDE) /= 0) THEN
+    RETURN
+  ENDIF
+  !
+  ! Open CSV file if enabled and not yet opened
+  IF (ENABLE_CSV .AND. .NOT. csv_opened) THEN
+    csv_unit = 99  ! Use unit 99 for CSV output
+    OPEN(UNIT=csv_unit, FILE='wlm_mode_b.csv', STATUS='REPLACE', IOSTAT=ios)
+    IF (ios == 0) THEN
+      ! Write CSV header
+      WRITE(csv_unit, '(A)') 'MODE,TYPE,METRIC,E_eV,k1,k2,n,Re_kz,Im_kz,kappa_Bohrm1,g2_Bohrm2'
+      csv_opened = .TRUE.
+    ELSE
+      ! Failed to open, disable CSV for this run
+      WRITE(*,'(A)') 'Warning: Failed to open CSV file, CSV output disabled'
+    ENDIF
   ENDIF
   !
   ! Mode B.A: State-resolved ⟨g²⟩ with filtering and sorting
@@ -467,11 +513,28 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
     kept = kept + 1
     IF (kept > NKEEP) EXIT
     !
-    ! Print in compact format with kappa information
+    ! Extract Re(k_z) and Im(k_z) for this state
+    IF (rows(j)%idx <= SIZE(kvall)) THEN
+      re_kz = REAL(kvall(rows(j)%idx), DP) * tpiba
+      im_kz = AIMAG(kvall(rows(j)%idx)) * tpiba
+    ELSE
+      re_kz = 0.0_DP
+      im_kz = 0.0_DP
+    ENDIF
+    !
+    ! Print to stdout in compact format with kappa information
     WRITE(*,'(A,1x,A,1x,F8.3,1x,A,2F10.6,1x,A,I4,1x,A,F8.4,1x,A,ES12.5,1x,A)') &
       'WLM_SUMMARY', 'MODE=B:STATE', energy, 'k1,k2=', xyk(1), xyk(2), &
       'n=', rows(j)%idx, 'kappa=', rows(j)%kappa, 'g2=', rows(j)%g2, &
       'units:kappa=Bohr^-1 g2=Bohr^-2'
+    !
+    ! Also write to CSV file if enabled
+    IF (ENABLE_CSV .AND. csv_opened) THEN
+      WRITE(csv_unit,'(A,",",A,",",A,",",F8.3,",",F10.6,",",F10.6,",",I6,",",&
+                     &F14.8,",",F14.8,",",F12.6,",",ES14.6)') &
+        'MODE', 'B', 'STATE', energy, xyk(1), xyk(2), rows(j)%idx, &
+        re_kz, im_kz, rows(j)%kappa, rows(j)%g2
+    ENDIF
   ENDDO
   !
   DEALLOCATE(rows)
