@@ -219,6 +219,18 @@ MODULE cb_cond
        kintr(:,:),     &!  integral of phi_k with beta-fun.
        kcoefr(:,:)      !  coeff. of phi_k over nonloc. fun.
   !
+  ! ... CBS eigenvector data for Mode B calculations
+  !
+  INTEGER :: &
+       nz1_m = 0,      &!  number of subslabs (kz grid points)
+       ngper_m = 0,    &!  number of perpendicular G vectors
+       nstl_m = 0,     &!  number of left-moving states
+       nchanl_m = 0     !  number of propagating channels (cached)
+  COMPLEX(DP), ALLOCATABLE :: &
+       cbs_vec_l(:,:,:) !  CBS eigenvectors (kz, ig, n) for left lead
+  LOGICAL :: &
+       cbs_vec_l_ready = .FALSE.  !  Flag indicating if eigenvector data is ready
+  !
 END MODULE cb_cond
 !
 MODULE cond_files

@@ -357,7 +357,7 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
 ! orbital character at different energies.
 !
   USE kinds, ONLY: DP
-  USE cbs_store
+  USE cond, ONLY: nz1_m, ngper_m, nstl_m, nchanl_m, cbs_vec_l, cbs_vec_l_ready
   IMPLICIT NONE
   !
   INTEGER, INTENT(IN) :: nz1, ngper, lb

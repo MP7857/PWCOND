@@ -10,7 +10,6 @@ MODFLAGS= $(BASEMOD_FLAGS) \
 PWCONDOBJS = \
 allocate_cond.o \
 bessj.o \
-cbs_store.o \
 compbs.o \
 compbs_2.o \
 condcom.o \

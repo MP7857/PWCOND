@@ -458,7 +458,7 @@ subroutine store_cbs_eigenvectors_left(n2d, nocros, norb, npol, nchan, &
 !-----------------------------------------------------------------------
 !
 ! This subroutine extracts CBS eigenvectors and stores them in the
-! cbs_store module for Mode B calculations.
+! cb_cond module for Mode B calculations.
 !
 ! For each eigenstate n, we extract the plane-wave coefficients from
 ! kfun (which is already normalized and has been transformed by amat*vec).
@@ -477,8 +477,8 @@ subroutine store_cbs_eigenvectors_left(n2d, nocros, norb, npol, nchan, &
 ! For noncollinear (npol=2), we sum over spin components to get spatial weights.
 !
   USE kinds, ONLY: DP
-  USE cond, ONLY: nz1, ngper
-  USE cbs_store
+  USE cond, ONLY: nz1, ngper, nz1_m, ngper_m, nstl_m, nchanl_m, &
+                  cbs_vec_l, cbs_vec_l_ready
   IMPLICIT NONE
   !
   INTEGER, INTENT(IN) :: n2d, nocros, norb, npol, nchan
@@ -495,7 +495,14 @@ subroutine store_cbs_eigenvectors_left(n2d, nocros, norb, npol, nchan, &
   !
   ! Allocate storage for eigenvectors
   ! We set nz1_m = 1 since we only have boundary values, not z-resolved
-  CALL allocate_cbs_vec(1, ngper, nstl, nchan)
+  IF (ALLOCATED(cbs_vec_l)) DEALLOCATE(cbs_vec_l)
+  nz1_m = 1
+  ngper_m = ngper
+  nstl_m = nstl
+  nchanl_m = nchan
+  ALLOCATE(cbs_vec_l(1, ngper, nstl+nchan))
+  cbs_vec_l = (0.0_DP, 0.0_DP)
+  cbs_vec_l_ready = .FALSE.
   !
   ! Extract eigenvector coefficients
   ! The kfun array contains the normalized plane-wave components
