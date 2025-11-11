@@ -358,7 +358,7 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
 ! orbital character at different energies.
 !
   USE kinds, ONLY: DP
-  USE cond, ONLY: nz1_m, ngper_m, nstl_m, nchanl_m, cbs_vec_l, cbs_vec_l_ready
+  USE cond, ONLY: nz1_m, ngper_m, nstl_m, nchanl_m, ntot_m, cbs_vec_l, cbs_vec_l_ready
   IMPLICIT NONE
   !
   INTEGER, INTENT(IN) :: nz1, ngper, lb
@@ -379,7 +379,7 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
   !
   ! Mode B.A: State-resolved ⟨g²⟩
   !
-  DO n = 1, nstl_m + nchanl_m
+  DO n = 1, ntot_m
     sum_w2   = 0.0_DP
     sum_g2w2 = 0.0_DP
     !
@@ -415,7 +415,7 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
   ! Mode B.B: State and (l,m)-resolved ⟨g²⟩ using separable weights
   !
   mdim = 2*lb + 1
-  DO n = 1, nstl_m + nchanl_m
+  DO n = 1, ntot_m
     DO m_idx = 1, mdim
       m_val = m_idx - 1 - lb
       sum_w2   = 0.0_DP

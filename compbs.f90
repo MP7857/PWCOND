@@ -477,7 +477,7 @@ subroutine store_cbs_eigenvectors_left(n2d, nocros, norb, npol, nchan, &
 ! For noncollinear (npol=2), we sum over spin components to get spatial weights.
 !
   USE kinds, ONLY: DP
-  USE cond, ONLY: nz1, ngper, nz1_m, ngper_m, nstl_m, nchanl_m, &
+  USE cond, ONLY: nz1, ngper, nz1_m, ngper_m, nstl_m, nchanl_m, ntot_m, &
                   cbs_vec_l, cbs_vec_l_ready
   IMPLICIT NONE
   !
@@ -500,7 +500,8 @@ subroutine store_cbs_eigenvectors_left(n2d, nocros, norb, npol, nchan, &
   ngper_m = ngper
   nstl_m = nstl
   nchanl_m = nchan
-  ALLOCATE(cbs_vec_l(1, ngper, nstl+nchan))
+  ntot_m = ntot
+  ALLOCATE(cbs_vec_l(1, ngper, ntot))
   cbs_vec_l = (0.0_DP, 0.0_DP)
   cbs_vec_l_ready = .FALSE.
   !

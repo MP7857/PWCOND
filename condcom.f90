@@ -225,7 +225,8 @@ MODULE cb_cond
        nz1_m = 0,      &!  number of subslabs (kz grid points)
        ngper_m = 0,    &!  number of perpendicular G vectors
        nstl_m = 0,     &!  number of left-moving states
-       nchanl_m = 0     !  number of propagating channels (cached)
+       nchanl_m = 0,   &!  number of propagating channels (cached)
+       ntot_m = 0       !  total number of CBS states stored
   COMPLEX(DP), ALLOCATABLE :: &
        cbs_vec_l(:,:,:) !  CBS eigenvectors (kz, ig, n) for left lead
   LOGICAL :: &
