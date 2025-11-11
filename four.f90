@@ -279,10 +279,11 @@ implicit none
 
 !
 ! Compute and print WLM_SUMMARY: ⟨g²⟩ per (l,m) channel (Mode A)
+! Mode A is energy-independent (projector-only), print once per k-point
 !
   mdim = 2*lb + 1
-  ! Only print Mode A once for reference (at first energy and k-point)
-  if (ien.eq.1 .and. ik.eq.1) then
+  ! Only print Mode A once per k-point (at first energy)
+  if (ien.eq.1) then
     do m_idx = 1, mdim
       sum_w2   = 0.0_dp
       sum_g2w2 = 0.0_dp
@@ -302,10 +303,11 @@ implicit none
       ! Compute m quantum number from channel index
       m_val = m_idx - 1 - lb
       abs_m = abs(m_val)
-      ! Print with full context: energy, k-perpendicular, l, m, g2, nz
-      write(*,'(A,1x,A,1x,F9.3,1x,A,2F10.6,1x,A,I2,1x,A,I2,1x,A,ES20.10,1x,A)') &
-           'WLM_SUMMARY', 'MODE=A:LM', earr(ien), 'k1,k2=', xyk(1,ik), xyk(2,ik), &
-           'l=', lb, 'm=', m_val, 'g2=', g2_avg, 'units:g2=Bohr^-2'
+      ! Print clearly labeled as energy-independent, without energy tag
+      write(*,'(A,1x,A,1x,A,2F10.6,1x,A,I2,1x,A,I2,1x,A,ES20.10,1x,A,I4,1x,A)') &
+           'WLM_SUMMARY', 'MODE=A:LM', 'k1,k2=', xyk(1,ik), xyk(2,ik), &
+           'l=', lb, 'm=', m_val, 'g2=', g2_avg, &
+           'nz=', nz1, 'units:g2=Bohr^-2 k=2pi/a (energy-independent)'
     enddo
   endif
 
@@ -368,9 +370,9 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
   COMPLEX(DP), INTENT(IN) :: w0(nz1, ngper, 7)
   !
   ! Output policy parameters
-  INTEGER, PARAMETER :: NKEEP = 8           ! Keep slowest-decaying N states
-  REAL(DP), PARAMETER :: KAPPA_MAX = 2.0_DP ! Max kappa in Bohr^-1; <=0 to disable
-  REAL(DP), PARAMETER :: MIN_WT = 1.0E-6_DP ! Min state weight threshold
+  INTEGER, PARAMETER :: NKEEP = 16          ! Keep slowest-decaying N states
+  REAL(DP), PARAMETER :: KAPPA_MAX = 5.0_DP ! Max kappa in Bohr^-1; <=0 to disable
+  REAL(DP), PARAMETER :: MIN_WT = 1.0E-8_DP ! Min state weight threshold
   !
   ! State sorting structure
   TYPE state_row
