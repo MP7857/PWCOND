@@ -537,6 +537,74 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
       'g2_bohr=', rows(j)%g2, 'g2_ang=', g2_ang, 'norm=', rows(j)%wt
   ENDDO
   !
+  !------------------------------
+  ! Mode B.B: STATE_LM (separable)  ⟨g²⟩ per state and per (l,m)
+  !------------------------------
+  INTEGER, PARAMETER :: NKEEP_LM   = 8          ! per state list size (after κ filter)
+  REAL(DP), PARAMETER :: MIN_WT_LM = 1.0E-5_DP  ! per-(l,m) weight cutoff
+
+  mdim = 2*lb + 1
+
+  ! Precompute W_lm(ig) = sum_z |w0(z,ig,m)|^2  (z-integrated projector weights)
+  REAL(DP), ALLOCATABLE :: Wlm2(:,:)
+  ALLOCATE(Wlm2(igmax, mdim))
+  DO m_idx = 1, mdim
+    DO ig = 1, igmax
+      w2lm = 0.0_DP
+      DO kz = 1, nz1
+        w2lm = w2lm + REAL( w0(kz,ig,m_idx) * CONJG(w0(kz,ig,m_idx)), DP )
+      END DO
+      Wlm2(ig, m_idx) = w2lm
+    END DO
+  END DO
+  ! NOTE: dividing Wlm2 by nz1 is optional; it cancels in the ratio, but
+  ! it would rescale MIN_WT_LM. We keep as-is for simplicity.
+
+  kept = 0
+  DO j = 1, ntot_m
+    IF (KAPPA_MAX > 0.0_DP) THEN
+      IF (rows(j)%kappa > KAPPA_MAX) CYCLE
+    ENDIF
+    IF (rows(j)%wt < MIN_WT) CYCLE
+    IF (rows(j)%g2 < 0.0_DP) CYCLE
+
+    kept = kept + 1
+    IF (kept > MIN(NKEEP_LM, NKEEP)) EXIT
+
+    ! For this state, compute per-(l,m) g2 using separable weighting
+    DO m_idx = 1, mdim
+      sum_w2   = 0.0_DP
+      sum_g2w2 = 0.0_DP
+      DO ig = 1, igmax
+        gmag2 = (gper(1,ig)*tpiba)**2 + (gper(2,ig)*tpiba)**2
+
+        c2 = 0.0_DP
+        DO i = 1, ncomp
+          c = cbs_vec_l(i, ig, rows(j)%idx)
+          c2 = c2 + REAL(c*CONJG(c), DP)
+        END DO
+
+        w2 = c2 * Wlm2(ig, m_idx)     ! separable weight per (ig,m)
+        sum_w2   = sum_w2   + w2
+        sum_g2w2 = sum_g2w2 + gmag2 * w2
+      END DO
+
+      IF (sum_w2 > MIN_WT_LM) THEN
+        g2_avg_lm_state = sum_g2w2 / sum_w2
+        m_val = m_idx - 1 - lb
+
+        WRITE(*,'(A,1x,A,1x,F8.3,1x,A,2F10.6,1x,A,I4,1x,A,I3,1x,A,I3,1x,A,ES12.5,1x,A,ES12.5,1x,A,ES10.3)') &
+          'WLM_SUMMARY', 'MODE=B:STATE_LM', energy, 'k1,k2=', xyk(1), xyk(2), &
+          'n=', rows(j)%idx, 'l=', lb, 'm=', m_val, &
+          'g2_bohr=', g2_avg_lm_state, 'g2_ang=', g2_avg_lm_state*bohr2_to_ang2, &
+          'norm_lm=', sum_w2
+      END IF
+
+    END DO  ! m_idx
+  END DO    ! j
+
+  DEALLOCATE(Wlm2)
+  !
   DEALLOCATE(rows)
   !
   ! Mode B.B: State and (l,m)-resolved ⟨g²⟩ (commented out to reduce output)
