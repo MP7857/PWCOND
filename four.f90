@@ -8,6 +8,45 @@
 ! Modified by M. Pourfath (2025)
 ! Extended to include f-orbital (l = 3) calculations.
 !
+!-----------------------------------------------------------------------
+MODULE mode_b_guard
+!-----------------------------------------------------------------------
+! Module to prevent duplicate Mode B printing when four() is called
+! multiple times per (ik, ien) for different projectors/orbitals
+  USE kinds, ONLY: DP
+  IMPLICIT NONE
+  SAVE
+  PRIVATE
+  PUBLIC :: should_print_mode_b, reset_mode_b_guard
+  
+  LOGICAL :: printed_this_energy = .FALSE.
+  INTEGER :: last_ik = -999
+  INTEGER :: last_ien = -999
+  
+CONTAINS
+
+  LOGICAL FUNCTION should_print_mode_b(ik, ien)
+    INTEGER, INTENT(IN) :: ik, ien
+    ! Returns TRUE if Mode B should be printed for this (ik, ien)
+    ! and marks it as printed
+    IF (.NOT. printed_this_energy .OR. last_ik /= ik .OR. last_ien /= ien) THEN
+      should_print_mode_b = .TRUE.
+      printed_this_energy = .TRUE.
+      last_ik = ik
+      last_ien = ien
+    ELSE
+      should_print_mode_b = .FALSE.
+    ENDIF
+  END FUNCTION should_print_mode_b
+  
+  SUBROUTINE reset_mode_b_guard()
+    ! Reset the guard - call this when starting a new k-point or energy
+    printed_this_energy = .FALSE.
+  END SUBROUTINE reset_mode_b_guard
+  
+END MODULE mode_b_guard
+!-----------------------------------------------------------------------
+
 subroutine four(w0, z0, dz, tblm, taunew, r, rab, betar, ik, ien)
 !
 ! This routine computes the bidimensional fourier transform of the
@@ -40,6 +79,7 @@ subroutine four(w0, z0, dz, tblm, taunew, r, rab, betar, ik, ien)
   USE radial_grids, only : ndmx
   USE cell_base, ONLY : alat, tpiba
   USE cond, ONLY : sarea, nz1, ngper, gper, ninsh, gnsh, ngpsh, earr, xyk
+  USE mode_b_guard, ONLY : should_print_mode_b
 
 implicit none
 
@@ -314,8 +354,11 @@ implicit none
 
 !
 ! Mode B: State-resolved and state-channel-resolved ⟨g²⟩
+! Only print once per (ik, ien) to avoid duplicates from multiple projector calls
 !
-  call compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, earr(ien), xyk(:,ik))
+  if (should_print_mode_b(ik, ien)) then
+    call compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, earr(ien), xyk(:,ik))
+  endif
 
 
   deallocate(x1)
