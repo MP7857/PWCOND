@@ -303,11 +303,12 @@ implicit none
       ! Compute m quantum number from channel index
       m_val = m_idx - 1 - lb
       abs_m = abs(m_val)
-      ! Print clearly labeled as energy-independent, without energy tag
-      write(*,'(A,1x,A,1x,A,2F10.6,1x,A,I2,1x,A,I2,1x,A,ES20.10,1x,A,I4,1x,A)') &
-           'WLM_SUMMARY', 'MODE=A:LM', 'k1,k2=', xyk(1,ik), xyk(2,ik), &
-           'l=', lb, 'm=', m_val, 'g2=', g2_avg, &
-           'nz=', nz1, 'units:g2=Bohr^-2 k=2pi/a (energy-independent)'
+      ! Print clearly labeled as energy-independent baseline
+      ! Convert to Angstrom units: 1 Bohr = 0.529177 Å, so 1 Bohr^-2 = 3.5711 Å^-2
+      write(*,'(A,1x,A,1x,A,2F10.6,1x,A,I2,1x,A,I2,1x,A,ES12.5,1x,A,ES12.5,1x,A)') &
+           'WLM_SUMMARY', 'MODE=A:LM(baseline)', 'k1,k2=', xyk(1,ik), xyk(2,ik), &
+           'l=', lb, 'm=', m_val, 'g2_bohr=', g2_avg, 'g2_ang=', g2_avg*3.5711_dp, &
+           'units:Bohr^-2,Ang^-2 (energy-independent)'
     enddo
   endif
 
@@ -382,9 +383,11 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
     REAL(DP) :: wt          ! State weight (norm)
   END TYPE state_row
   !
-  INTEGER :: n, kz, ig, m_idx, mdim, m_val, j, kept, i
+  INTEGER :: n, kz, ig, m_idx, mdim, m_val, j, kept, i, ncomp
   REAL(DP) :: gmag2, sum_w2, sum_g2w2, g2_avg_state, g2_avg_lm_state
-  REAL(DP) :: c2, w2lm, w2, kappa_j, wt_j
+  REAL(DP) :: c2, w2lm, w2, kappa_j, wt_j, kappa_ang, g2_ang
+  REAL(DP), PARAMETER :: bohr_to_ang = 0.529177_DP  ! Bohr to Angstrom conversion
+  REAL(DP), PARAMETER :: bohr2_to_ang2 = 3.5711_DP  ! Bohr^-2 to Ang^-2
   COMPLEX(DP) :: c
   LOGICAL :: is_finite
   TYPE(state_row), ALLOCATABLE :: rows(:)
@@ -401,6 +404,9 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
   !
   ALLOCATE(rows(ntot_m))
   !
+  ! Determine number of components (currently always 1, but future-proofing for spinors)
+  ncomp = SIZE(cbs_vec_l, 1)
+  !
   DO n = 1, ntot_m
     sum_w2   = 0.0_DP
     sum_g2w2 = 0.0_DP
@@ -409,8 +415,13 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
     DO kz = 1, nz1_m
       DO ig = 1, MIN(ngper_m, ngper)
         gmag2 = (gper(1,ig)*tpiba)**2 + (gper(2,ig)*tpiba)**2
-        c = cbs_vec_l(kz, ig, n)
-        c2 = REAL(c*CONJG(c), DP)
+        !
+        ! Sum over components for spinor/multi-component safety
+        c2 = 0.0_DP
+        DO i = 1, ncomp
+          c = cbs_vec_l(i, ig, n)
+          c2 = c2 + REAL(c*CONJG(c), DP)
+        ENDDO
         !
         ! Check for finite values
         is_finite = (gmag2 < 1.0E30_DP) .AND. (c2 < 1.0E30_DP) .AND. &
@@ -469,11 +480,16 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
     kept = kept + 1
     IF (kept > NKEEP) EXIT
     !
-    ! Print in compact format with kappa information
-    WRITE(*,'(A,1x,A,1x,F8.3,1x,A,2F10.6,1x,A,I4,1x,A,F8.4,1x,A,ES12.5,1x,A)') &
+    ! Convert to Angstrom units
+    kappa_ang = rows(j)%kappa / bohr_to_ang  ! Bohr^-1 to Ang^-1
+    g2_ang = rows(j)%g2 * bohr2_to_ang2      ! Bohr^-2 to Ang^-2
+    !
+    ! Print in compact format with kappa, g2, and normalization information
+    ! Format: MODE | Energy(eV) | k1,k2 | state_n | kappa(Bohr^-1) | kappa(Ang^-1) | g2(Bohr^-2) | g2(Ang^-2) | norm
+    WRITE(*,'(A,1x,A,1x,F8.3,1x,A,2F10.6,1x,A,I4,1x,A,F8.4,1x,A,F8.4,1x,A,ES12.5,1x,A,ES12.5,1x,A,ES10.3)') &
       'WLM_SUMMARY', 'MODE=B:STATE', energy, 'k1,k2=', xyk(1), xyk(2), &
-      'n=', rows(j)%idx, 'kappa=', rows(j)%kappa, 'g2=', rows(j)%g2, &
-      'units:kappa=Bohr^-1 g2=Bohr^-2'
+      'n=', rows(j)%idx, 'kappa_bohr=', rows(j)%kappa, 'kappa_ang=', kappa_ang, &
+      'g2_bohr=', rows(j)%g2, 'g2_ang=', g2_ang, 'norm=', rows(j)%wt
   ENDDO
   !
   DEALLOCATE(rows)
