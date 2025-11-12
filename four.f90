@@ -383,7 +383,7 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
     REAL(DP) :: wt          ! State weight (norm)
   END TYPE state_row
   !
-  INTEGER :: n, kz, ig, m_idx, mdim, m_val, j, kept, i, ncomp
+  INTEGER :: n, kz, ig, m_idx, mdim, m_val, j, kept, i, ncomp, igmax
   REAL(DP) :: gmag2, sum_w2, sum_g2w2, g2_avg_state, g2_avg_lm_state
   REAL(DP) :: c2, w2lm, w2, kappa_j, wt_j, kappa_ang, g2_ang
   REAL(DP), PARAMETER :: bohr_to_ang = 0.529177_DP  ! Bohr to Angstrom conversion
@@ -407,31 +407,33 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
   ! Determine number of components (currently always 1, but future-proofing for spinors)
   ncomp = SIZE(cbs_vec_l, 1)
   !
+  ! Guard against dimension mismatches
+  igmax = MIN(ngper_m, ngper, SIZE(cbs_vec_l, 2))
+  !
   DO n = 1, ntot_m
     sum_w2   = 0.0_DP
     sum_g2w2 = 0.0_DP
     !
-    ! Loop over kz (which is 1 for boundary values) and ig
-    DO kz = 1, nz1_m
-      DO ig = 1, MIN(ngper_m, ngper)
-        gmag2 = (gper(1,ig)*tpiba)**2 + (gper(2,ig)*tpiba)**2
-        !
-        ! Sum over components for spinor/multi-component safety
-        c2 = 0.0_DP
-        DO i = 1, ncomp
-          c = cbs_vec_l(i, ig, n)
-          c2 = c2 + REAL(c*CONJG(c), DP)
-        ENDDO
-        !
-        ! Check for finite values
-        is_finite = (gmag2 < 1.0E30_DP) .AND. (c2 < 1.0E30_DP) .AND. &
-                    (gmag2 > -1.0E30_DP) .AND. (c2 > -1.0E30_DP)
-        !
-        IF (is_finite) THEN
-          sum_w2   = sum_w2   + c2
-          sum_g2w2 = sum_g2w2 + gmag2 * c2
-        ENDIF
+    ! Note: cbs_vec_l(i,ig,n) does not depend on kz, so no kz loop needed
+    ! This keeps the norm correct (not inflated by nz1_m)
+    DO ig = 1, igmax
+      gmag2 = (gper(1,ig)*tpiba)**2 + (gper(2,ig)*tpiba)**2
+      !
+      ! Sum over components for spinor/multi-component safety
+      c2 = 0.0_DP
+      DO i = 1, ncomp
+        c = cbs_vec_l(i, ig, n)
+        c2 = c2 + REAL(c*CONJG(c), DP)
       ENDDO
+      !
+      ! Check for finite values
+      is_finite = (gmag2 < 1.0E30_DP) .AND. (c2 < 1.0E30_DP) .AND. &
+                  (gmag2 > -1.0E30_DP) .AND. (c2 > -1.0E30_DP)
+      !
+      IF (is_finite) THEN
+        sum_w2   = sum_w2   + c2
+        sum_g2w2 = sum_g2w2 + gmag2 * c2
+      ENDIF
     ENDDO
     !
     IF (sum_w2 > 0.0_DP) THEN
