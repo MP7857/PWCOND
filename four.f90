@@ -417,6 +417,8 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
   INTEGER, PARAMETER :: NKEEP = 16          ! Keep slowest-decaying N states
   REAL(DP), PARAMETER :: KAPPA_MAX = 0.25_DP ! Max kappa in Bohr^-1; <=0 to disable
   REAL(DP), PARAMETER :: MIN_WT = 1.0E-6_DP ! Min state weight threshold
+  INTEGER, PARAMETER :: NKEEP_LM = 8        ! Keep slowest-decaying N states for STATE_LM
+  REAL(DP), PARAMETER :: MIN_WT_LM = 1.0E-5_DP ! Min per-(l,m) weight threshold
   !
   ! State sorting structure
   TYPE state_row
@@ -435,6 +437,7 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
   LOGICAL :: is_finite
   TYPE(state_row), ALLOCATABLE :: rows(:)
   TYPE(state_row) :: key
+  REAL(DP), ALLOCATABLE :: Wlm2(:,:)  ! z-integrated projector weights for STATE_LM
   !
   ! Check if CBS eigenvector data is available
   IF (.NOT. cbs_vec_l_ready) THEN
@@ -540,13 +543,9 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
   !------------------------------
   ! Mode B.B: STATE_LM (separable)  ⟨g²⟩ per state and per (l,m)
   !------------------------------
-  INTEGER, PARAMETER :: NKEEP_LM   = 8          ! per state list size (after κ filter)
-  REAL(DP), PARAMETER :: MIN_WT_LM = 1.0E-5_DP  ! per-(l,m) weight cutoff
-
   mdim = 2*lb + 1
 
   ! Precompute W_lm(ig) = sum_z |w0(z,ig,m)|^2  (z-integrated projector weights)
-  REAL(DP), ALLOCATABLE :: Wlm2(:,:)
   ALLOCATE(Wlm2(igmax, mdim))
   DO m_idx = 1, mdim
     DO ig = 1, igmax
