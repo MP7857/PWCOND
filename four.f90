@@ -592,11 +592,17 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
         g2_avg_lm_state = sum_g2w2 / sum_w2
         m_val = m_idx - 1 - lb
 
+        ! Human-readable format
         WRITE(*,'(A,1x,A,1x,F8.3,1x,A,2F10.6,1x,A,I4,1x,A,I3,1x,A,I3,1x,A,ES12.5,1x,A,ES12.5,1x,A,ES10.3)') &
           'WLM_SUMMARY', 'MODE=B:STATE_LM', energy, 'k1,k2=', xyk(1), xyk(2), &
           'n=', rows(j)%idx, 'l=', lb, 'm=', m_val, &
           'g2_bohr=', g2_avg_lm_state, 'g2_ang=', g2_avg_lm_state*bohr2_to_ang2, &
           'norm_lm=', sum_w2
+        
+        ! CSV format for easy parsing/plotting
+        WRITE(*,'(A,1x,F10.6,1x,F10.6,1x,F10.6,1x,I6,1x,I2,1x,I3,1x,ES16.8,1x,ES16.8,1x,ES16.8)') &
+          'WLM_CSV,STATE_LM', energy, xyk(1), xyk(2), rows(j)%idx, lb, m_val, &
+          g2_avg_lm_state, g2_avg_lm_state*bohr2_to_ang2, sum_w2
       END IF
 
     END DO  ! m_idx
