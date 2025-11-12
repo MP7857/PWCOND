@@ -372,8 +372,8 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
   !
   ! Output policy parameters
   INTEGER, PARAMETER :: NKEEP = 16          ! Keep slowest-decaying N states
-  REAL(DP), PARAMETER :: KAPPA_MAX = 5.0_DP ! Max kappa in Bohr^-1; <=0 to disable
-  REAL(DP), PARAMETER :: MIN_WT = 1.0E-8_DP ! Min state weight threshold
+  REAL(DP), PARAMETER :: KAPPA_MAX = 0.25_DP ! Max kappa in Bohr^-1; <=0 to disable
+  REAL(DP), PARAMETER :: MIN_WT = 1.0E-6_DP ! Min state weight threshold
   !
   ! State sorting structure
   TYPE state_row
