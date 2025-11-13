@@ -361,6 +361,10 @@ def generate_tables(state_data, state_lm_data, output_prefix="wlm_tables"):
             for state in states:
                 n = state["n"]
                 
+                # Skip states with missing critical data
+                if state['kappa_bohr'] is None or state['kappa_ang'] is None:
+                    continue
+                
                 # Get dominant orbitals for this state
                 lm_states = lm_by_energy_state[E][n]
                 if lm_states:
@@ -386,14 +390,21 @@ def generate_tables(state_data, state_lm_data, output_prefix="wlm_tables"):
                 else:
                     dominant = "N/A"
                 
+                # Handle potential None values in numeric fields
+                kappa_bohr_str = f"{state['kappa_bohr']:.4f}" if state['kappa_bohr'] is not None else "N/A"
+                kappa_ang_str = f"{state['kappa_ang']:.4f}" if state['kappa_ang'] is not None else "N/A"
+                g2_bohr_str = f"{state['g2_bohr']:.2e}" if state['g2_bohr'] is not None else "N/A"
+                g2_ang_str = f"{state['g2_ang']:.2e}" if state['g2_ang'] is not None else "N/A"
+                norm_str = f"{state['norm']:.2e}" if state['norm'] is not None else "N/A"
+                
                 writer.writerow([
                     f"{E:.3f}",
                     n,
-                    f"{state['kappa_bohr']:.4f}",
-                    f"{state['kappa_ang']:.4f}",
-                    f"{state['g2_bohr']:.2e}",
-                    f"{state['g2_ang']:.2e}",
-                    f"{state['norm']:.2e}",
+                    kappa_bohr_str,
+                    kappa_ang_str,
+                    g2_bohr_str,
+                    g2_ang_str,
+                    norm_str,
                     dominant
                 ])
     
@@ -415,6 +426,10 @@ def generate_tables(state_data, state_lm_data, output_prefix="wlm_tables"):
                 n = state["n"]
                 kappa_ang = state["kappa_ang"]
                 
+                # Skip states with missing critical data
+                if kappa_ang is None:
+                    continue
+                
                 lm_states = lm_by_energy_state[E][n]
                 if not lm_states:
                     continue
@@ -431,6 +446,7 @@ def generate_tables(state_data, state_lm_data, output_prefix="wlm_tables"):
                     frac = lm["norm_lm"] / total_weight if total_weight > 0 else 0
                     if frac > 0.01:  # Only include if > 1%
                         name = orbital_name(lm["l"], lm["m"])
+                        g2_ang_str = f"{lm['g2_ang']:.2e}" if lm['g2_ang'] is not None else "N/A"
                         writer.writerow([
                             f"{E:.3f}",
                             n,
@@ -440,7 +456,7 @@ def generate_tables(state_data, state_lm_data, output_prefix="wlm_tables"):
                             name,
                             f"{lm['norm_lm']:.3e}",
                             f"{frac:.4f}",
-                            f"{lm['g2_ang']:.2e}"
+                            g2_ang_str
                         ])
     
     print(f"Saved: {table2_filename}")
@@ -470,9 +486,16 @@ def generate_tables(state_data, state_lm_data, output_prefix="wlm_tables"):
                 kappa = state["kappa_ang"]
                 g2 = state["g2_ang"]
                 
+                # Skip states with missing critical data
+                if kappa is None:
+                    continue
+                
                 f.write(f"\nRank {rank}: State n={n}\n")
                 f.write(f"  κ = {kappa:.4f} Å⁻¹\n")
-                f.write(f"  ⟨g²⟩ = {g2:.2f} Å⁻²\n")
+                if g2 is not None:
+                    f.write(f"  ⟨g²⟩ = {g2:.2f} Å⁻²\n")
+                else:
+                    f.write(f"  ⟨g²⟩ = N/A\n")
                 
                 lm_states = lm_by_energy_state[E][n]
                 if lm_states:
