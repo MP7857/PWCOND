@@ -613,9 +613,15 @@ Examples:
     python3 analyze_wlm.py --help             # Show this help
 
 Output:
-    - kappa_vs_E.png: Tunneling decay constant plot
-    - g2_vs_E.png: Transverse momentum plot
-    - orbital_contrib_best_E.png: Orbital decomposition
+    Plots:
+      - kappa_vs_E.png: Tunneling decay constant plot
+      - g2_vs_E.png: Transverse momentum plot
+      - orbital_contrib_best_E.png: Orbital decomposition
+      - orbital_evolution_vs_E.png: Orbital character vs energy
+    Tables:
+      - wlm_tables_top_states.csv: Top tunneling states
+      - wlm_tables_orbital_character.csv: Detailed orbital breakdown
+      - wlm_tables_summary.txt: Human-readable summary
 
 For more information, see README_WLM_ANALYSIS.md
 """

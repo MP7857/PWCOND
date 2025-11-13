@@ -39,6 +39,10 @@ env/
 *.pdf
 *.eps
 
+# WLM analysis output files
+wlm_tables*.csv
+wlm_tables*.txt
+
 # Fortran
 *.mod
 *.o
