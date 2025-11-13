@@ -4,11 +4,12 @@ This directory contains tools for analyzing the `WLM_SUMMARY` output from the PW
 
 ## Overview
 
-The `analyze_wlm.py` script parses WLM_SUMMARY output and generates visualization plots to help understand:
+The `analyze_wlm.py` script parses WLM_SUMMARY output and generates visualization plots and comprehensive tables to help understand:
 
 1. **Where tunneling happens** - by identifying energies with minimum decay constant κ(E)
 2. **Tunneling channel characteristics** - via transverse momentum ⟨g²⟩(E) analysis
 3. **Orbital contributions** - which atomic orbitals (s, p, d, f) carry the tunneling current
+4. **Quantitative tables** - for direct use in research papers with clear physics statements
 
 ## Requirements
 
@@ -38,7 +39,9 @@ python3 analyze_wlm.py
 
 ### Output Files
 
-The script generates three PNG files:
+The script generates both visualization plots and analysis tables:
+
+#### Plots (PNG files)
 
 1. **kappa_vs_E.png** - Decay constant κ vs energy
    - Deep minima indicate strong tunneling resonances
@@ -51,6 +54,27 @@ The script generates three PNG files:
 3. **orbital_contrib_best_E.png** - Orbital decomposition bar chart
    - Shows which atomic orbitals dominate at the best tunneling energy
    - Helps identify the physical character of the tunneling state
+
+4. **orbital_evolution_vs_E.png** - Orbital character evolution with energy
+   - Stacked area plot showing how s, p, d, f contributions change with energy
+   - Reveals energy-dependent orbital character of dominant tunneling channels
+
+#### Tables (CSV and TXT files)
+
+1. **wlm_tables_top_states.csv** - Top tunneling states per energy
+   - Energy, state index, decay constant κ, transverse momentum ⟨g²⟩
+   - Dominant orbital characters with percentages
+   - Directly usable for Table 1 in research papers
+
+2. **wlm_tables_orbital_character.csv** - Detailed orbital character breakdown
+   - Complete (l,m) decomposition for each tunneling state
+   - Fractional weights showing which orbitals contribute
+   - Provides data for Table 2 in research papers
+
+3. **wlm_tables_summary.txt** - Human-readable summary
+   - Formatted text suitable for copying into paper drafts
+   - Ranks states by decay constant with orbital character analysis
+   - Provides clear physics statements about tunneling
 
 ### Example Output
 
@@ -73,13 +97,45 @@ Best tunneling state:
 Saved: orbital_contrib_best_E.png
 
 Orbital contributions (normalized):
-  (l=0,m=+0): 0.7658 (76.6%)    ← s-orbital dominates
-  (l=1,m=-1): 0.1595 (16.0%)    ← p_x orbital
-  (l=1,m=+0): 0.0638 (6.4%)     ← p_z orbital
-  (l=1,m=+1): 0.0108 (1.1%)     ← p_y orbital
+  s: 0.7658 (76.6%)    ← s-orbital dominates
+  p_x: 0.1595 (16.0%)  ← p_x orbital
+  p_z: 0.0638 (6.4%)   ← p_z orbital
+  p_y: 0.0108 (1.1%)   ← p_y orbital
+Saved: orbital_evolution_vs_E.png
+
+======================================================================
+Generating comprehensive analysis tables...
+======================================================================
+
+Generating Table 1: wlm_tables_top_states.csv
+Saved: wlm_tables_top_states.csv
+
+Generating Table 2: wlm_tables_orbital_character.csv
+Saved: wlm_tables_orbital_character.csv
+
+Generating text summary: wlm_tables_summary.txt
+Saved: wlm_tables_summary.txt
 ----------------------------------------------------------------------
 
 Analysis complete!
+```
+
+#### Sample Table 1: Top Tunneling States (wlm_tables_top_states.csv)
+
+```csv
+Energy_eV,State_n,kappa_Bohr,kappa_Ang,g2_Bohr2,g2_Ang2,norm,dominant_orbitals
+5.400,7,0.0987,0.1864,1.12e+00,4.01e+00,1.57e-01,"s(77%), p_x(16%), p_z(6%)"
+6.900,5,0.0450,0.0851,2.05e+01,7.32e+01,1.23e+00,"d_z²−1(54%), f_z(5z²−3r²)(31%), p_z(15%)"
+```
+
+#### Sample Table 2: Orbital Character (wlm_tables_orbital_character.csv)
+
+```csv
+Energy_eV,State_n,kappa_Ang,l,m,orbital_name,norm_lm,fractional_weight,g2_Ang2
+5.400,7,0.1864,0,0,s,1.200e-01,0.7658,3.93e+00
+5.400,7,0.1864,1,-1,p_x,2.500e-02,0.1595,4.11e+00
+6.900,5,0.0851,2,0,d_z²−1,5.500e-01,0.5392,6.43e+01
+6.900,5,0.0851,3,0,f_z(5z²−3r²),3.200e-01,0.3137,6.61e+01
 ```
 
 ## Interpreting the Results
@@ -102,17 +158,47 @@ The average transverse momentum squared characterizes the angular distribution:
 
 ### Orbital Contributions
 
-The bar chart shows the relative contribution of each (l,m) channel:
+The analysis identifies which atomic orbitals carry the tunneling current:
 
-| Angular Momentum | Orbital Character | Physical Interpretation |
-|------------------|-------------------|------------------------|
-| l=0, m=0 | s-like | Spherically symmetric |
-| l=1, m=0 | p_z | Aligned with transport direction |
-| l=1, m=±1 | p_x, p_y | Perpendicular to transport |
-| l=2, m=... | d-orbitals | Various d-orbital characters |
-| l=3, m=... | f-orbitals | Various f-orbital characters |
+| Orbital | Symbol | Physical Interpretation |
+|---------|--------|------------------------|
+| l=0, m=0 | **s** | Spherically symmetric |
+| l=1, m=0 | **p_z** | Aligned with transport direction |
+| l=1, m=±1 | **p_x, p_y** | Perpendicular to transport |
+| l=2, m=0 | **d_z²−1** | Axial d-orbital |
+| l=2, m=±1 | **d_xz, d_yz** | Off-axis d-orbitals |
+| l=2, m=±2 | **d_xy, d_x²−y²** | Planar d-orbitals |
+| l=3, m=0 | **f_z(5z²−3r²)** | Axial f-orbital |
+| l=3, m=±1 | **f_x(5z²−r²), f_y(5z²−r²)** | Off-axis f-orbitals |
+| l=3, m=±2,±3 | **f_xyz, etc.** | Various f-orbital characters |
 
-High contributions from p_z or d_{z²-r²} orbitals indicate tunneling aligned with the transport direction.
+High contributions from **p_z** or **d_z²−1** orbitals indicate tunneling aligned with the transport direction, which typically leads to higher transmission coefficients.
+
+### Using Tables in Research Papers
+
+#### Table 1: Top Tunneling States
+
+This table provides a quick overview of the dominant tunneling channels:
+
+- **Use in papers**: "At E = 5.4 eV, the slowest-decaying state (n=7, κ=0.186 Å⁻¹) is dominated by s-orbital character (77%), with smaller p contributions."
+- Shows which states dominate at each energy
+- Provides quantitative orbital percentages for clear physics statements
+
+#### Table 2: Detailed Orbital Character
+
+This table gives complete (l,m) decomposition:
+
+- **Use in papers**: "The dominant tunneling channel at E = 6.9 eV exhibits mixed d-f character, with d_z²−1 (54%) and f_z(5z²−3r²) (31%) being the primary contributors."
+- Allows precise identification of specific orbital contributions
+- Supports detailed analysis of tunneling mechanisms
+
+#### Text Summary
+
+The generated `wlm_tables_summary.txt` provides ready-to-use text:
+
+- Can be directly adapted for Methods or Results sections
+- Includes all key physics statements
+- Properly formatted with correct notation
 
 ## Technical Details
 
@@ -188,6 +274,48 @@ If you use this analysis tool in your research, please cite:
 
 - The PWCOND quantum transport package
 - Relevant methodology papers for complex band structure analysis
+
+## Making Physics Statements from the Analysis
+
+### Generic Template for Papers
+
+Based on the analysis output, you can write statements like:
+
+> "At each energy, we rank the complex band structure (CBS) evanescent states by their decay constant κ = |Im k_z|. The states with the smallest κ dominate the tunneling current. For each such state we compute the transverse momentum moment ⟨g_⊥²⟩ and orbital character using the CBS plane-wave amplitudes.
+>
+> We find that near E = 6.9 eV the slowest-decaying channel (κ = 0.085 Å⁻¹) is predominantly d_z²−1 (54%) and f_z(5z²−3r²) (31%) like, with smaller p_z contributions (15%). At lower energies (E = 5.4 eV), the dominant channel becomes more s-like (77%), with smaller p-orbital character."
+
+### Workflow for Paper Writing
+
+1. **Run the analysis**: `python3 analyze_wlm.py out.txt`
+
+2. **Examine Table 1** (`wlm_tables_top_states.csv`):
+   - Identify which energies have the best tunneling (lowest κ)
+   - Note the dominant orbital characters
+
+3. **Examine Table 2** (`wlm_tables_orbital_character.csv`):
+   - Get precise percentages for each orbital contribution
+   - Identify trends in orbital character vs energy
+
+4. **Use the text summary** (`wlm_tables_summary.txt`):
+   - Copy relevant sections into your paper
+   - Adapt the language to match your writing style
+
+5. **Include plots in your paper**:
+   - κ(E) plot shows where tunneling is strongest
+   - Orbital evolution plot shows energy-dependent character
+   - Orbital bar chart illustrates dominant channels
+
+### Example Physics Statements
+
+**From Table 1 analysis**:
+> "The slowest-decaying state at E = 6.9 eV (κ = 0.085 Å⁻¹) exhibits mixed d-f character, dominated by d_z²−1 (54%) and f_z(5z²−3r²) (31%) orbitals."
+
+**From orbital evolution plot**:
+> "As energy increases from 5.4 eV to 6.9 eV, the dominant tunneling channel transitions from predominantly s-character to mixed d-f character, indicating a change in the electronic structure of the evanescent states."
+
+**From combined κ(E) and orbital analysis**:
+> "The minimum decay constant occurs at E = 6.9 eV where the tunneling channel is dominated by d_z²−1 and f_z(5z²−3r²) orbitals, both aligned with the transport direction, which explains the enhanced transmission at this energy."
 
 ## References
 
