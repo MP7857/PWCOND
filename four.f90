@@ -532,12 +532,14 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
     kappa_ang = rows(j)%kappa / bohr_to_ang  ! Bohr^-1 to Ang^-1
     g2_ang = rows(j)%g2 * bohr2_to_ang2      ! Bohr^-2 to Ang^-2
     !
-    ! Print in compact format with kappa, g2, and normalization information
-    ! Format: MODE | Energy(eV) | k1,k2 | state_n | kappa(Bohr^-1) | kappa(Ang^-1) | g2(Bohr^-2) | g2(Ang^-2) | norm
-    WRITE(*,'(A,1x,A,1x,F8.3,1x,A,2F10.6,1x,A,I4,1x,A,F8.4,1x,A,F8.4,1x,A,ES12.5,1x,A,ES12.5,1x,A,ES10.3)') &
+    ! Print in two lines to avoid truncation
+    ! Line 1: MODE | Energy(eV) | k1,k2 | state_n | kappa(Bohr^-1) | kappa(Ang^-1)
+    WRITE(*,'(A,1x,A,1x,F8.3,1x,A,2F10.6,1x,A,I4,1x,A,F8.4,1x,A,F8.4)') &
       'WLM_SUMMARY', 'MODE=B:STATE', energy, 'k1,k2=', xyk(1), xyk(2), &
-      'n=', rows(j)%idx, 'kappa_bohr=', rows(j)%kappa, 'kappa_ang=', kappa_ang, &
-      'g2_bohr=', rows(j)%g2, 'g2_ang=', g2_ang, 'norm=', rows(j)%wt
+      'n=', rows(j)%idx, 'kappa_bohr=', rows(j)%kappa, 'kappa_ang=', kappa_ang
+    ! Line 2: g2(Bohr^-2) | g2(Ang^-2) | norm
+    WRITE(*,'(A,1x,A,ES12.5,1x,A,ES12.5,1x,A,ES10.3)') &
+      'WLM_SUMMARY_CONT', 'g2_bohr=', rows(j)%g2, 'g2_ang=', g2_ang, 'norm=', rows(j)%wt
   ENDDO
   !
   !------------------------------
@@ -592,11 +594,14 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
         g2_avg_lm_state = sum_g2w2 / sum_w2
         m_val = m_idx - 1 - lb
 
-        ! Human-readable format
-        WRITE(*,'(A,1x,A,1x,F8.3,1x,A,2F10.6,1x,A,I4,1x,A,I3,1x,A,I3,1x,A,ES12.5,1x,A,ES12.5,1x,A,ES10.3)') &
+        ! Print in two lines to avoid truncation
+        ! Line 1: MODE | Energy(eV) | k1,k2 | state_n | l | m
+        WRITE(*,'(A,1x,A,1x,F8.3,1x,A,2F10.6,1x,A,I4,1x,A,I3,1x,A,I3)') &
           'WLM_SUMMARY', 'MODE=B:STATE_LM', energy, 'k1,k2=', xyk(1), xyk(2), &
-          'n=', rows(j)%idx, 'l=', lb, 'm=', m_val, &
-          'g2_bohr=', g2_avg_lm_state, 'g2_ang=', g2_avg_lm_state*bohr2_to_ang2, &
+          'n=', rows(j)%idx, 'l=', lb, 'm=', m_val
+        ! Line 2: g2(Bohr^-2) | g2(Ang^-2) | norm_lm
+        WRITE(*,'(A,1x,A,ES12.5,1x,A,ES12.5,1x,A,ES10.3)') &
+          'WLM_SUMMARY_CONT', 'g2_bohr=', g2_avg_lm_state, 'g2_ang=', g2_avg_lm_state*bohr2_to_ang2, &
           'norm_lm=', sum_w2
         
         ! CSV format for easy parsing/plotting
