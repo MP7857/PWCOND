@@ -405,6 +405,10 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
 !
 ! Output is filtered to keep only physically relevant states (slowest decay).
 !
+! Output format: Each entry is printed on two lines to avoid truncation:
+!   Line 1: WLM_SUMMARY with key identifiers (energy, k-point, quantum numbers)
+!   Line 2: WLM_SUMMARY_CONT with computed values (g², normalization)
+!
   USE kinds, ONLY: DP
   USE cond, ONLY: nz1_m, ngper_m, nstl_m, nchanl_m, ntot_m, cbs_vec_l, cbs_vec_l_ready, kvall
   IMPLICIT NONE
