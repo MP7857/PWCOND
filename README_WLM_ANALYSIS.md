@@ -118,6 +118,10 @@ High contributions from p_z or d_{z²-r²} orbitals indicate tunneling aligned w
 
 ### WLM_SUMMARY Output Format
 
+The script supports both legacy single-line and modern two-line output formats.
+
+#### Modern Two-Line Format (Current)
+
 The script parses three types of output from `four.f90`:
 
 #### MODE=B:STATE (State-resolved)
@@ -126,7 +130,23 @@ WLM_SUMMARY MODE=B:STATE    5.400 k1,k2=  0.000000  0.000000 n=   7 kappa_bohr= 
 WLM_SUMMARY_CONT g2_bohr=  1.12345E+00 g2_ang=  4.01195E+00 norm= 1.567E-01
 ```
 
-This provides:
+#### MODE=B:STATE_LM (State and orbital-resolved)
+```
+WLM_SUMMARY MODE=B:STATE_LM    5.400 k1,k2=  0.000000  0.000000 n=   7 l=  0 m=  0
+WLM_SUMMARY_CONT g2_bohr=  1.10000E+00 g2_ang=  3.92821E+00 norm_lm= 1.200E-01
+```
+
+#### Legacy Single-Line Format
+
+The script also supports older single-line format where all data is on one line:
+
+```
+WLM_SUMMARY MODE=B:STATE    5.400 k1,k2=  0.000000  0.000000 n=   7 kappa_bohr=   0.0987 kappa_ang=   0.1864 g2_bohr=  1.12345E+00 g2_ang=  4.01195E+00 norm= 1.567E-01
+```
+
+### Data Fields
+
+**MODE=B:STATE** provides:
 - Energy (eV)
 - Transverse k-point (k1, k2)
 - State index (n)
@@ -134,13 +154,7 @@ This provides:
 - Average transverse momentum ⟨g²⟩ in Bohr⁻² and Å⁻²
 - State weight (norm)
 
-#### MODE=B:STATE_LM (State and orbital-resolved)
-```
-WLM_SUMMARY MODE=B:STATE_LM    5.400 k1,k2=  0.000000  0.000000 n=   7 l=  0 m=  0
-WLM_SUMMARY_CONT g2_bohr=  1.10000E+00 g2_ang=  3.92821E+00 norm_lm= 1.200E-01
-```
-
-This provides:
+**MODE=B:STATE_LM** provides:
 - All of the above, plus:
 - Angular momentum quantum numbers (l, m)
 - Orbital-resolved ⟨g²⟩

@@ -60,7 +60,7 @@ def parse_wlm_output(filename):
             i += 1
             continue
         
-        # Parse MODE=B:STATE (two-line format)
+        # Parse MODE=B:STATE (two-line or single-line format)
         if "MODE=B:STATE" in line and "STATE_LM" not in line:
             # Line 1: energy, k-points, state index, kappa values
             E = float(line.split()[2])
@@ -72,11 +72,13 @@ def parse_wlm_output(filename):
             kappa_bohr = get_float("kappa_bohr", line)
             kappa_ang = get_float("kappa_ang", line)
             
-            # Line 2 (continuation): g2 and norm values
-            g2_bohr = None
-            g2_ang = None
-            norm = None
-            if i + 1 < len(lines) and "WLM_SUMMARY_CONT" in lines[i + 1]:
+            # Check if g2 data is on the same line (legacy single-line format)
+            g2_bohr = get_float("g2_bohr", line)
+            g2_ang = get_float("g2_ang", line)
+            norm = get_float("norm", line)
+            
+            # Or on the next line (two-line continuation format)
+            if g2_bohr is None and i + 1 < len(lines) and "WLM_SUMMARY_CONT" in lines[i + 1]:
                 cont_line = lines[i + 1]
                 g2_bohr = get_float("g2_bohr", cont_line)
                 g2_ang = get_float("g2_ang", cont_line)
@@ -90,7 +92,7 @@ def parse_wlm_output(filename):
                 "norm": norm
             })
         
-        # Parse MODE=B:STATE_LM (two-line format)
+        # Parse MODE=B:STATE_LM (two-line or single-line format)
         elif "MODE=B:STATE_LM" in line:
             # Line 1: energy, k-points, state index, l, m
             E = float(line.split()[2])
@@ -102,11 +104,13 @@ def parse_wlm_output(filename):
             l = get_int("l", line)
             m = get_int("m", line)
             
-            # Line 2 (continuation): g2 and norm_lm values
-            g2_bohr = None
-            g2_ang = None
-            norm_lm = None
-            if i + 1 < len(lines) and "WLM_SUMMARY_CONT" in lines[i + 1]:
+            # Check if g2 data is on the same line (legacy single-line format)
+            g2_bohr = get_float("g2_bohr", line)
+            g2_ang = get_float("g2_ang", line)
+            norm_lm = get_float("norm_lm", line)
+            
+            # Or on the next line (two-line continuation format)
+            if g2_bohr is None and i + 1 < len(lines) and "WLM_SUMMARY_CONT" in lines[i + 1]:
                 cont_line = lines[i + 1]
                 g2_bohr = get_float("g2_bohr", cont_line)
                 g2_ang = get_float("g2_ang", cont_line)
@@ -250,11 +254,49 @@ def plot_orbital_contributions(state_data, state_lm_data, output_file="orbital_c
     for i, (label, weight) in enumerate(zip(lm_labels, lm_weights)):
         print(f"  {label}: {weight:.4f} ({weight*100:.1f}%)")
 
+def print_help():
+    """Print help message."""
+    help_text = """
+WLM_SUMMARY Output Parser and Plotter
+
+Usage:
+    python3 analyze_wlm.py [options] [output_file]
+
+Arguments:
+    output_file    Path to PWCOND output file (default: out.txt)
+
+Options:
+    -h, --help     Show this help message and exit
+    -v, --version  Show version information
+
+Examples:
+    python3 analyze_wlm.py                    # Use default out.txt
+    python3 analyze_wlm.py my_output.txt      # Parse my_output.txt
+    python3 analyze_wlm.py --help             # Show this help
+
+Output:
+    - kappa_vs_E.png: Tunneling decay constant plot
+    - g2_vs_E.png: Transverse momentum plot
+    - orbital_contrib_best_E.png: Orbital decomposition
+
+For more information, see README_WLM_ANALYSIS.md
+"""
+    print(help_text)
+
 def main():
     """Main analysis routine."""
-    # Get filename from command line or use default
+    # Parse command line arguments
     if len(sys.argv) > 1:
-        filename = sys.argv[1]
+        arg = sys.argv[1]
+        if arg in ['-h', '--help']:
+            print_help()
+            return 0
+        elif arg in ['-v', '--version']:
+            print("analyze_wlm.py version 1.0")
+            print("Part of PWCOND quantum transport package")
+            return 0
+        else:
+            filename = arg
     else:
         filename = "out.txt"
     
