@@ -333,7 +333,7 @@ subroutine four(w0, z0, dz, tblm, taunew, r, rab, betar, ik, ien)
   USE radial_grids, only : ndmx
   USE cell_base, ONLY : alat, tpiba
   USE cond, ONLY : sarea, nz1, ngper, gper, ninsh, gnsh, ngpsh, earr, xyk
-  USE mode_b_guard, ONLY : should_print_mode_b
+  USE mode_b_guard, ONLY : should_print_mode_b, init_wlm2_accumulator, accumulate_wlm2
 
 implicit none
 
