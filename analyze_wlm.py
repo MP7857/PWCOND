@@ -536,6 +536,187 @@ def generate_tables(state_data, state_lm_data, output_prefix="wlm_tables"):
     print(f"  • {table2_filename} - Detailed orbital character breakdown")
     print(f"  • {summary_filename} - Human-readable summary for papers")
 
+def compute_orbital_vs_energy_weighted(state_data, state_lm_data, 
+                                       kappa_threshold=0.5, 
+                                       norm_threshold=1e-3,
+                                       output_file="wlm_orbital_vs_energy.csv"):
+    """
+    Compute weighted-average orbital contributions per energy across multiple tunneling states.
+    
+    Instead of using only the single best state per energy, this function:
+    1. Filters states by kappa and norm thresholds
+    2. Weights each state by its importance (norm or tunneling factor)
+    3. Computes weighted averages of orbital fractions across all relevant states
+    
+    This provides a more complete picture of the orbital character of tunneling
+    at each energy, especially when multiple states contribute.
+    
+    Args:
+        state_data: List of dicts with MODE=B:STATE information
+        state_lm_data: List of dicts with MODE=B:STATE_LM information
+        kappa_threshold: Maximum kappa (Bohr^-1) for a state to be considered tunneling-relevant
+        norm_threshold: Minimum norm for a state to be included
+        output_file: Output CSV filename
+    
+    Returns:
+        List of dicts with keys: E_eV, frac_s, frac_p, frac_d, frac_f
+    """
+    if not state_data or not state_lm_data:
+        print("Warning: Insufficient data for weighted orbital analysis")
+        return None
+    
+    # Filter states by thresholds
+    filtered_states = []
+    for state in state_data:
+        kappa = state.get("kappa_bohr")
+        norm = state.get("norm")
+        if kappa is not None and norm is not None:
+            if kappa <= kappa_threshold and norm >= norm_threshold:
+                filtered_states.append(state)
+    
+    if len(filtered_states) == 0:
+        print(f"Warning: No states pass filters (kappa<={kappa_threshold}, norm>={norm_threshold})")
+        return None
+    
+    print(f"\nComputing weighted orbital contributions per energy...")
+    print(f"Filters: kappa_bohr <= {kappa_threshold}, norm >= {norm_threshold}")
+    print(f"States passing filters: {len(filtered_states)} out of {len(state_data)}")
+    
+    # Group states by energy
+    states_by_energy = defaultdict(list)
+    for state in filtered_states:
+        states_by_energy[state["E"]].append(state)
+    
+    # Group LM data by (energy, state)
+    lm_by_energy_state = defaultdict(lambda: defaultdict(list))
+    for lm_state in state_lm_data:
+        if lm_state.get("norm_lm") is not None:
+            E = lm_state["E"]
+            n = lm_state["n"]
+            lm_by_energy_state[E][n].append(lm_state)
+    
+    # For each energy, compute weighted average orbital fractions
+    results = []
+    
+    for E in sorted(states_by_energy.keys()):
+        states_at_E = states_by_energy[E]
+        
+        total_weight = 0.0
+        weighted_frac = {"s": 0.0, "p": 0.0, "d": 0.0, "f": 0.0}
+        
+        for state in states_at_E:
+            n = state["n"]
+            weight = state["norm"]  # Use norm as weight
+            
+            # Get LM data for this state
+            lm_for_state = lm_by_energy_state[E][n]
+            
+            if not lm_for_state:
+                continue
+            
+            # Compute total norm_lm for this state
+            total_norm_lm = sum(lm["norm_lm"] for lm in lm_for_state if lm.get("norm_lm") is not None)
+            
+            if total_norm_lm <= 0:
+                continue
+            
+            # Compute fractional contributions per l for this state
+            state_frac = {"s": 0.0, "p": 0.0, "d": 0.0, "f": 0.0}
+            for lm_row in lm_for_state:
+                l = lm_row["l"]
+                norm_lm = lm_row.get("norm_lm")
+                if norm_lm is None:
+                    continue
+                    
+                frac = norm_lm / total_norm_lm
+                
+                if l == 0:
+                    state_frac["s"] += frac
+                elif l == 1:
+                    state_frac["p"] += frac
+                elif l == 2:
+                    state_frac["d"] += frac
+                elif l == 3:
+                    state_frac["f"] += frac
+            
+            # Add this state's contribution to the weighted average
+            for orb in ["s", "p", "d", "f"]:
+                weighted_frac[orb] += weight * state_frac[orb]
+            
+            total_weight += weight
+        
+        # Normalize by total weight
+        if total_weight > 0:
+            result = {"E_eV": E}
+            for orb in ["s", "p", "d", "f"]:
+                result[f"frac_{orb}"] = weighted_frac[orb] / total_weight
+            results.append(result)
+    
+    if not results:
+        print("Warning: No valid energy points with orbital data")
+        return None
+    
+    # Sort by energy
+    results.sort(key=lambda r: r["E_eV"])
+    
+    # Save to CSV
+    with open(output_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['E_eV', 'frac_s', 'frac_p', 'frac_d', 'frac_f'])
+        for r in results:
+            writer.writerow([
+                f"{r['E_eV']:.6f}",
+                f"{r['frac_s']:.6f}",
+                f"{r['frac_p']:.6f}",
+                f"{r['frac_d']:.6f}",
+                f"{r['frac_f']:.6f}"
+            ])
+    
+    print(f"Saved: {output_file}")
+    print(f"Energy points analyzed: {len(results)}")
+    
+    return results
+
+def plot_orbital_vs_energy_weighted(orbital_data, output_file="orbital_vs_energy_weighted.png"):
+    """
+    Plot weighted-average orbital contributions vs energy.
+    
+    Creates a stacked area plot or line plot showing how s, p, d, f contributions
+    vary with energy, computed using weighted averaging across all relevant
+    tunneling states (not just the single best state).
+    
+    Args:
+        orbital_data: List of dicts from compute_orbital_vs_energy_weighted()
+        output_file: Output PNG filename
+    """
+    if orbital_data is None or len(orbital_data) == 0:
+        print("Warning: No data available for weighted orbital plot")
+        return
+    
+    energies = [d["E_eV"] for d in orbital_data]
+    s_frac = [d["frac_s"] for d in orbital_data]
+    p_frac = [d["frac_p"] for d in orbital_data]
+    d_frac = [d["frac_d"] for d in orbital_data]
+    f_frac = [d["frac_f"] for d in orbital_data]
+    
+    # Create stacked area plot
+    plt.figure(figsize=(10, 6))
+    plt.stackplot(energies, s_frac, p_frac, d_frac, f_frac,
+                  labels=['s', 'p', 'd', 'f'],
+                  alpha=0.8,
+                  colors=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'])
+    
+    plt.xlabel("Energy (eV)", fontsize=12)
+    plt.ylabel("Weighted orbital fraction", fontsize=12)
+    plt.title("Weighted-average orbital contributions vs Energy\n(across all relevant tunneling states)", fontsize=13)
+    plt.legend(loc='upper right', fontsize=11)
+    plt.grid(True, alpha=0.3, axis='y')
+    plt.ylim(0, 1)
+    plt.tight_layout()
+    plt.savefig(output_file, dpi=150)
+    print(f"Saved: {output_file}")
+    plt.close()
+
 def plot_orbital_evolution(state_data, state_lm_data, output_file="orbital_evolution_vs_E.png"):
     """
     Plot how the dominant orbital character evolves with energy.
@@ -711,6 +892,20 @@ def main():
     if state_data and state_lm_data:
         generate_tables(state_data, state_lm_data)
     
+    # Generate weighted orbital contributions per energy
+    print("\n" + "=" * 70)
+    print("Computing weighted-average orbital contributions per energy...")
+    print("=" * 70)
+    
+    if state_data and state_lm_data:
+        df_orbital_weighted = compute_orbital_vs_energy_weighted(
+            state_data, state_lm_data, 
+            kappa_threshold=0.5, 
+            norm_threshold=1e-3
+        )
+        if df_orbital_weighted is not None:
+            plot_orbital_vs_energy_weighted(df_orbital_weighted)
+    
     print("-" * 70)
     print("\nAnalysis complete!")
     print("\nGenerated files:")
@@ -718,15 +913,18 @@ def main():
     print("    - kappa_vs_E.png: Tunneling decay constant vs energy")
     print("    - g2_vs_E.png: Average transverse momentum vs energy")
     print("    - orbital_contrib_best_E.png: Orbital decomposition at best tunneling energy")
-    print("    - orbital_evolution_vs_E.png: Orbital character evolution with energy")
+    print("    - orbital_evolution_vs_E.png: Orbital character evolution with energy (best state only)")
+    print("    - orbital_vs_energy_weighted.png: Weighted orbital contributions across all tunneling states")
     print("  Tables:")
     print("    - wlm_tables_top_states.csv: Top tunneling states per energy")
     print("    - wlm_tables_orbital_character.csv: Detailed orbital character breakdown")
     print("    - wlm_tables_summary.txt: Human-readable summary for papers")
+    print("    - wlm_orbital_vs_energy.csv: Weighted orbital fractions per energy (NEW)")
     print("\nInterpretation guide:")
     print("  • Deep minima in κ(E) → dominant tunneling channels")
     print("  • Low ⟨g²⟩(E) → more normal-incidence-like, better coupling")
     print("  • Orbital bars/evolution → which atomic orbitals carry the tunneling current")
+    print("  • Weighted orbital analysis → comprehensive view across all tunneling-relevant states")
     print("  • Tables provide quantitative orbital character for paper writing")
     
     return 0
