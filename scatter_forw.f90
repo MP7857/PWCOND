@@ -27,6 +27,7 @@ subroutine scatter_forw(nrz, nrzp, z, psiper, zk, norb, tblm, cros, &
   USE noncollin_module, ONLY : npol
   USE mp_pools, ONLY : intra_pool_comm
   USE cond
+  USE mode_b_guard, ONLY : flush_state_lm_analysis
   !
   IMPLICIT NONE
 
@@ -435,6 +436,9 @@ subroutine scatter_forw(nrz, nrzp, z, psiper, zk, norb, tblm, cros, &
 !---------
 
   enddo
+
+! Flush accumulated STATE_LM analysis after all slabs/projectors processed
+  CALL flush_state_lm_analysis()
 
 !-------
 !    wave functions on the left boundary

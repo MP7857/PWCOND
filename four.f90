@@ -18,10 +18,24 @@ MODULE mode_b_guard
   SAVE
   PRIVATE
   PUBLIC :: should_print_mode_b, reset_mode_b_guard
+  PUBLIC :: accumulate_wlm2, flush_state_lm_analysis, init_wlm2_accumulator
   
   LOGICAL :: printed_this_energy = .FALSE.
   INTEGER :: last_ik = -999
   INTEGER :: last_ien = -999
+  
+  ! Accumulation arrays for STATE_LM from all orbitals
+  INTEGER :: accum_nz1 = 0
+  INTEGER :: accum_ngper = 0
+  INTEGER :: accum_lmax = 3  ! Maximum l value (0=s, 1=p, 2=d, 3=f)
+  REAL(DP) :: accum_energy = 0.0_DP
+  REAL(DP) :: accum_xyk(2) = 0.0_DP
+  REAL(DP) :: accum_tpiba = 0.0_DP
+  REAL(DP), ALLOCATABLE :: accum_gper(:,:)
+  REAL(DP), ALLOCATABLE :: accum_Wlm2(:,:,:)  ! (ig, m_idx, l) - z-integrated weights
+  INTEGER, ALLOCATABLE :: accum_lm_count(:,:)  ! (m_idx, l) - count of contributions
+  LOGICAL :: accum_initialized = .FALSE.
+  LOGICAL :: accum_has_data = .FALSE.
   
 CONTAINS
 
@@ -43,6 +57,246 @@ CONTAINS
     ! Reset the guard - call this when starting a new k-point or energy
     printed_this_energy = .FALSE.
   END SUBROUTINE reset_mode_b_guard
+
+  SUBROUTINE init_wlm2_accumulator(nz1, ngper, gper, tpiba, energy, xyk)
+    ! Initialize the accumulator for a new (ik, ien)
+    INTEGER, INTENT(IN) :: nz1, ngper
+    REAL(DP), INTENT(IN) :: gper(2, ngper), tpiba, energy, xyk(2)
+    INTEGER :: max_mdim, l
+    
+    ! Store parameters
+    accum_nz1 = nz1
+    accum_ngper = ngper
+    accum_energy = energy
+    accum_xyk = xyk
+    accum_tpiba = tpiba
+    
+    ! Allocate accumulation arrays if not already done or size changed
+    IF (.NOT. accum_initialized .OR. SIZE(accum_gper, 2) /= ngper) THEN
+      IF (ALLOCATED(accum_gper)) DEALLOCATE(accum_gper)
+      IF (ALLOCATED(accum_Wlm2)) DEALLOCATE(accum_Wlm2)
+      IF (ALLOCATED(accum_lm_count)) DEALLOCATE(accum_lm_count)
+      
+      ALLOCATE(accum_gper(2, ngper))
+      ! Maximum mdim = 2*lmax + 1 = 7 for l=3 (f-orbitals)
+      max_mdim = 2 * accum_lmax + 1
+      ALLOCATE(accum_Wlm2(ngper, max_mdim, 0:accum_lmax))
+      ALLOCATE(accum_lm_count(max_mdim, 0:accum_lmax))
+      accum_initialized = .TRUE.
+    END IF
+    
+    ! Copy gper
+    accum_gper = gper
+    
+    ! Reset accumulators
+    accum_Wlm2 = 0.0_DP
+    accum_lm_count = 0
+    accum_has_data = .FALSE.
+    
+  END SUBROUTINE init_wlm2_accumulator
+  
+  SUBROUTINE accumulate_wlm2(w0, nz1, ngper, lb)
+    ! Accumulate Wlm2 from one projector
+    INTEGER, INTENT(IN) :: nz1, ngper, lb
+    COMPLEX(DP), INTENT(IN) :: w0(nz1, ngper, 7)
+    INTEGER :: mdim, m_idx, ig, kz
+    REAL(DP) :: w2lm
+    
+    IF (.NOT. accum_initialized) RETURN
+    IF (lb < 0 .OR. lb > accum_lmax) RETURN
+    
+    mdim = 2 * lb + 1
+    
+    ! Accumulate z-integrated |w0|^2 for this orbital
+    DO m_idx = 1, mdim
+      DO ig = 1, MIN(ngper, accum_ngper)
+        w2lm = 0.0_DP
+        DO kz = 1, nz1
+          w2lm = w2lm + REAL(w0(kz, ig, m_idx) * CONJG(w0(kz, ig, m_idx)), DP)
+        END DO
+        accum_Wlm2(ig, m_idx, lb) = accum_Wlm2(ig, m_idx, lb) + w2lm
+      END DO
+      accum_lm_count(m_idx, lb) = accum_lm_count(m_idx, lb) + 1
+    END DO
+    
+    accum_has_data = .TRUE.
+    
+  END SUBROUTINE accumulate_wlm2
+  
+  SUBROUTINE flush_state_lm_analysis()
+    ! Compute and print STATE_LM analysis using accumulated data from all orbitals
+    USE cond, ONLY: nz1_m, ngper_m, ntot_m, cbs_vec_l, cbs_vec_l_ready, kvall
+    INTEGER :: l, mdim, m_idx, m_val
+    
+    IF (.NOT. accum_has_data) RETURN
+    IF (.NOT. cbs_vec_l_ready) RETURN
+    
+    ! Call the STATE_LM analysis for each l that has data
+    DO l = 0, accum_lmax
+      mdim = 2 * l + 1
+      ! Check if we have data for this l
+      IF (ANY(accum_lm_count(1:mdim, l) > 0)) THEN
+        ! Normalize by count (average over atoms with same l)
+        DO m_idx = 1, mdim
+          IF (accum_lm_count(m_idx, l) > 0) THEN
+            accum_Wlm2(:, m_idx, l) = accum_Wlm2(:, m_idx, l) / REAL(accum_lm_count(m_idx, l), DP)
+          END IF
+        END DO
+        
+        ! Call the STATE_LM analysis for this l
+        CALL compute_state_lm_for_l(accum_Wlm2(:, :, l), l, mdim)
+      END IF
+    END DO
+    
+    ! Reset for next energy/k-point
+    accum_has_data = .FALSE.
+    
+  END SUBROUTINE flush_state_lm_analysis
+  
+  SUBROUTINE compute_state_lm_for_l(Wlm2, lb, mdim)
+    ! Compute STATE_LM for a specific l value
+    USE kinds, ONLY: DP
+    USE cond, ONLY: nz1_m, ngper_m, ntot_m, cbs_vec_l, cbs_vec_l_ready, kvall
+    IMPLICIT NONE
+    REAL(DP), INTENT(IN) :: Wlm2(:, :)  ! (ig, m_idx) - precomputed z-integrated weights
+    INTEGER, INTENT(IN) :: lb, mdim
+    
+    ! Output policy parameters (same as in compute_mode_b_state)
+    INTEGER, PARAMETER :: NKEEP = 16
+    REAL(DP), PARAMETER :: KAPPA_MAX = 0.25_DP
+    REAL(DP), PARAMETER :: MIN_WT = 1.0E-6_DP
+    INTEGER, PARAMETER :: NKEEP_LM = 8
+    REAL(DP), PARAMETER :: MIN_WT_LM = 1.0E-5_DP
+    REAL(DP), PARAMETER :: bohr_to_ang = 0.529177_DP
+    REAL(DP), PARAMETER :: bohr2_to_ang2 = 3.5711_DP
+    
+    TYPE state_row
+      REAL(DP) :: kappa
+      INTEGER :: idx
+      REAL(DP) :: g2
+      REAL(DP) :: wt
+    END TYPE state_row
+    
+    TYPE(state_row), ALLOCATABLE :: rows(:)
+    TYPE(state_row) :: key
+    INTEGER :: n, ig, m_idx, m_val, j, kept, i, ncomp, igmax
+    REAL(DP) :: gmag2, sum_w2, sum_g2w2, g2_avg_state, g2_avg_lm_state
+    REAL(DP) :: c2, w2, kappa_j
+    COMPLEX(DP) :: c
+    LOGICAL :: is_finite
+    
+    IF (.NOT. cbs_vec_l_ready) RETURN
+    
+    ! First compute and sort states by kappa (same as compute_mode_b_state)
+    ALLOCATE(rows(ntot_m))
+    ncomp = SIZE(cbs_vec_l, 1)
+    igmax = MIN(ngper_m, accum_ngper, SIZE(cbs_vec_l, 2))
+    
+    DO n = 1, ntot_m
+      sum_w2 = 0.0_DP
+      sum_g2w2 = 0.0_DP
+      
+      DO ig = 1, igmax
+        gmag2 = (accum_gper(1, ig) * accum_tpiba)**2 + (accum_gper(2, ig) * accum_tpiba)**2
+        c2 = 0.0_DP
+        DO i = 1, ncomp
+          c = cbs_vec_l(i, ig, n)
+          c2 = c2 + REAL(c * CONJG(c), DP)
+        END DO
+        
+        is_finite = (gmag2 < 1.0E30_DP) .AND. (c2 < 1.0E30_DP) .AND. &
+                    (gmag2 > -1.0E30_DP) .AND. (c2 > -1.0E30_DP)
+        
+        IF (is_finite) THEN
+          sum_w2 = sum_w2 + c2
+          sum_g2w2 = sum_g2w2 + gmag2 * c2
+        END IF
+      END DO
+      
+      IF (sum_w2 > 0.0_DP) THEN
+        g2_avg_state = sum_g2w2 / sum_w2
+      ELSE
+        g2_avg_state = -1.0_DP
+      END IF
+      
+      IF (n <= SIZE(kvall)) THEN
+        kappa_j = ABS(AIMAG(kvall(n))) * accum_tpiba
+      ELSE
+        kappa_j = 1.0E30_DP
+      END IF
+      
+      rows(n)%kappa = kappa_j
+      rows(n)%idx = n
+      rows(n)%g2 = g2_avg_state
+      rows(n)%wt = sum_w2
+    END DO
+    
+    ! Sort by kappa
+    DO i = 2, ntot_m
+      key = rows(i)
+      j = i - 1
+      DO WHILE (j >= 1)
+        IF (rows(j)%kappa <= key%kappa) EXIT
+        rows(j + 1) = rows(j)
+        j = j - 1
+      END DO
+      rows(j + 1) = key
+    END DO
+    
+    ! Print STATE_LM for this l
+    kept = 0
+    DO j = 1, ntot_m
+      IF (KAPPA_MAX > 0.0_DP) THEN
+        IF (rows(j)%kappa > KAPPA_MAX) CYCLE
+      END IF
+      IF (rows(j)%wt < MIN_WT) CYCLE
+      IF (rows(j)%g2 < 0.0_DP) CYCLE
+      
+      kept = kept + 1
+      IF (kept > MIN(NKEEP_LM, NKEEP)) EXIT
+      
+      ! For this state, compute per-(l,m) g2
+      DO m_idx = 1, mdim
+        sum_w2 = 0.0_DP
+        sum_g2w2 = 0.0_DP
+        
+        DO ig = 1, igmax
+          gmag2 = (accum_gper(1, ig) * accum_tpiba)**2 + (accum_gper(2, ig) * accum_tpiba)**2
+          
+          c2 = 0.0_DP
+          DO i = 1, ncomp
+            c = cbs_vec_l(i, ig, rows(j)%idx)
+            c2 = c2 + REAL(c * CONJG(c), DP)
+          END DO
+          
+          w2 = c2 * Wlm2(ig, m_idx)
+          sum_w2 = sum_w2 + w2
+          sum_g2w2 = sum_g2w2 + gmag2 * w2
+        END DO
+        
+        IF (sum_w2 > MIN_WT_LM) THEN
+          g2_avg_lm_state = sum_g2w2 / sum_w2
+          m_val = m_idx - 1 - lb
+          
+          ! Print in two lines
+          WRITE(*, '(A,1x,A,1x,F8.3,1x,A,2F10.6,1x,A,I4,1x,A,I3,1x,A,I3)') &
+            'WLM_SUMMARY', 'MODE=B:STATE_LM', accum_energy, 'k1,k2=', accum_xyk(1), accum_xyk(2), &
+            'n=', rows(j)%idx, 'l=', lb, 'm=', m_val
+          WRITE(*, '(A,1x,A,ES12.5,1x,A,ES12.5,1x,A,ES10.3)') &
+            'WLM_SUMMARY_CONT', 'g2_bohr=', g2_avg_lm_state, 'g2_ang=', g2_avg_lm_state * bohr2_to_ang2, &
+            'norm_lm=', sum_w2
+          
+          ! CSV format
+          WRITE(*, '(A,1x,F10.6,1x,F10.6,1x,F10.6,1x,I6,1x,I2,1x,I3,1x,ES16.8,1x,ES16.8,1x,ES16.8)') &
+            'WLM_CSV,STATE_LM', accum_energy, accum_xyk(1), accum_xyk(2), rows(j)%idx, lb, m_val, &
+            g2_avg_lm_state, g2_avg_lm_state * bohr2_to_ang2, sum_w2
+        END IF
+      END DO  ! m_idx
+    END DO    ! j
+    
+    DEALLOCATE(rows)
+    
+  END SUBROUTINE compute_state_lm_for_l
   
 END MODULE mode_b_guard
 !-----------------------------------------------------------------------
@@ -354,11 +608,18 @@ implicit none
 
 !
 ! Mode B: State-resolved and state-channel-resolved ⟨g²⟩
-! Only print once per (ik, ien) to avoid duplicates from multiple projector calls
+! STATE analysis: print once per (ik, ien) to avoid duplicates
+! STATE_LM analysis: accumulate from all projectors, flush later
 !
   if (should_print_mode_b(ik, ien)) then
-    call compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, earr(ien), xyk(:,ik))
+    ! Initialize accumulator for STATE_LM (first projector for this ik, ien)
+    call init_wlm2_accumulator(nz1, ngper, gper, tpiba, earr(ien), xyk(:,ik))
+    ! Print MODE=B:STATE (once per energy/k-point)
+    call compute_mode_b_state(gper, tpiba, earr(ien), xyk(:,ik))
   endif
+  
+  ! Accumulate STATE_LM data from this projector (all projectors contribute)
+  call accumulate_wlm2(w0, nz1, ngper, lb)
 
 
   deallocate(x1)
@@ -383,25 +644,15 @@ implicit none
 CONTAINS
 
 !-----------------------------------------------------------------------
-subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
+subroutine compute_mode_b_state(gper, tpiba, energy, xyk)
 !-----------------------------------------------------------------------
 !
-! Computes and prints Mode B: state-resolved and state-channel-resolved ⟨g²⟩
+! Computes and prints Mode B: STATE - state-resolved ⟨g²⟩
 ! Only executes if CBS eigenvector data is available.
-!
-! Mode B provides energy- and state-dependent transverse momentum analysis:
 !
 ! MODE=B:STATE - State-resolved ⟨g²⟩:
 !   ⟨g²⟩^(n) = Σ_ig g²(ig) |C^(n)(ig)|² / Σ_ig |C^(n)(ig)|²
 !   where C^(n)(ig) are the CBS eigenvector components for state n
-!
-! MODE=B:STATE_LM - State and (l,m)-channel-resolved ⟨g²⟩ (separable approx):
-!   ⟨g²⟩^(n)_lm = Σ_ig g²(ig) |C^(n)(ig)|² (Σ_z |w0_lm(z,ig)|²) / norm
-!   where w0_lm is the Fourier transform of the beta function for orbital (l,m)
-!
-! This separable approximation weights each CBS state by its overlap with
-! different orbital characters, helping identify which states carry which
-! orbital character at different energies.
 !
 ! Output is filtered to keep only physically relevant states (slowest decay).
 !
@@ -410,19 +661,15 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
 !   Line 2: WLM_SUMMARY_CONT with computed values (g², normalization)
 !
   USE kinds, ONLY: DP
-  USE cond, ONLY: nz1_m, ngper_m, nstl_m, nchanl_m, ntot_m, cbs_vec_l, cbs_vec_l_ready, kvall
+  USE cond, ONLY: nz1_m, ngper_m, nstl_m, nchanl_m, ntot_m, cbs_vec_l, cbs_vec_l_ready, kvall, ngper
   IMPLICIT NONE
   !
-  INTEGER, INTENT(IN) :: nz1, ngper, lb
   REAL(DP), INTENT(IN) :: gper(2,ngper), tpiba, energy, xyk(2)
-  COMPLEX(DP), INTENT(IN) :: w0(nz1, ngper, 7)
   !
   ! Output policy parameters
   INTEGER, PARAMETER :: NKEEP = 16          ! Keep slowest-decaying N states
   REAL(DP), PARAMETER :: KAPPA_MAX = 0.25_DP ! Max kappa in Bohr^-1; <=0 to disable
   REAL(DP), PARAMETER :: MIN_WT = 1.0E-6_DP ! Min state weight threshold
-  INTEGER, PARAMETER :: NKEEP_LM = 8        ! Keep slowest-decaying N states for STATE_LM
-  REAL(DP), PARAMETER :: MIN_WT_LM = 1.0E-5_DP ! Min per-(l,m) weight threshold
   !
   ! State sorting structure
   TYPE state_row
@@ -432,16 +679,15 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
     REAL(DP) :: wt          ! State weight (norm)
   END TYPE state_row
   !
-  INTEGER :: n, kz, ig, m_idx, mdim, m_val, j, kept, i, ncomp, igmax
-  REAL(DP) :: gmag2, sum_w2, sum_g2w2, g2_avg_state, g2_avg_lm_state
-  REAL(DP) :: c2, w2lm, w2, kappa_j, wt_j, kappa_ang, g2_ang
+  INTEGER :: n, ig, j, kept, i, ncomp, igmax
+  REAL(DP) :: gmag2, sum_w2, sum_g2w2, g2_avg_state
+  REAL(DP) :: c2, kappa_j, kappa_ang, g2_ang
   REAL(DP), PARAMETER :: bohr_to_ang = 0.529177_DP  ! Bohr to Angstrom conversion
   REAL(DP), PARAMETER :: bohr2_to_ang2 = 3.5711_DP  ! Bohr^-2 to Ang^-2
   COMPLEX(DP) :: c
   LOGICAL :: is_finite
   TYPE(state_row), ALLOCATABLE :: rows(:)
   TYPE(state_row) :: key
-  REAL(DP), ALLOCATABLE :: Wlm2(:,:)  ! z-integrated projector weights for STATE_LM
   !
   ! Check if CBS eigenvector data is available
   IF (.NOT. cbs_vec_l_ready) THEN
@@ -546,94 +792,11 @@ subroutine compute_mode_b_g2(w0, nz1, ngper, lb, gper, tpiba, energy, xyk)
       'WLM_SUMMARY_CONT', 'g2_bohr=', rows(j)%g2, 'g2_ang=', g2_ang, 'norm=', rows(j)%wt
   ENDDO
   !
-  !------------------------------
-  ! Mode B.B: STATE_LM (separable)  ⟨g²⟩ per state and per (l,m)
-  !------------------------------
-  mdim = 2*lb + 1
-
-  ! Precompute W_lm(ig) = sum_z |w0(z,ig,m)|^2  (z-integrated projector weights)
-  ALLOCATE(Wlm2(igmax, mdim))
-  DO m_idx = 1, mdim
-    DO ig = 1, igmax
-      w2lm = 0.0_DP
-      DO kz = 1, nz1
-        w2lm = w2lm + REAL( w0(kz,ig,m_idx) * CONJG(w0(kz,ig,m_idx)), DP )
-      END DO
-      Wlm2(ig, m_idx) = w2lm
-    END DO
-  END DO
-  ! NOTE: dividing Wlm2 by nz1 is optional; it cancels in the ratio, but
-  ! it would rescale MIN_WT_LM. We keep as-is for simplicity.
-
-  kept = 0
-  DO j = 1, ntot_m
-    IF (KAPPA_MAX > 0.0_DP) THEN
-      IF (rows(j)%kappa > KAPPA_MAX) CYCLE
-    ENDIF
-    IF (rows(j)%wt < MIN_WT) CYCLE
-    IF (rows(j)%g2 < 0.0_DP) CYCLE
-
-    kept = kept + 1
-    IF (kept > MIN(NKEEP_LM, NKEEP)) EXIT
-
-    ! For this state, compute per-(l,m) g2 using separable weighting
-    DO m_idx = 1, mdim
-      sum_w2   = 0.0_DP
-      sum_g2w2 = 0.0_DP
-      DO ig = 1, igmax
-        gmag2 = (gper(1,ig)*tpiba)**2 + (gper(2,ig)*tpiba)**2
-
-        c2 = 0.0_DP
-        DO i = 1, ncomp
-          c = cbs_vec_l(i, ig, rows(j)%idx)
-          c2 = c2 + REAL(c*CONJG(c), DP)
-        END DO
-
-        w2 = c2 * Wlm2(ig, m_idx)     ! separable weight per (ig,m)
-        sum_w2   = sum_w2   + w2
-        sum_g2w2 = sum_g2w2 + gmag2 * w2
-      END DO
-
-      IF (sum_w2 > MIN_WT_LM) THEN
-        g2_avg_lm_state = sum_g2w2 / sum_w2
-        m_val = m_idx - 1 - lb
-
-        ! Print in two lines to avoid truncation
-        ! Line 1: MODE | Energy(eV) | k1,k2 | state_n | l | m
-        WRITE(*,'(A,1x,A,1x,F8.3,1x,A,2F10.6,1x,A,I4,1x,A,I3,1x,A,I3)') &
-          'WLM_SUMMARY', 'MODE=B:STATE_LM', energy, 'k1,k2=', xyk(1), xyk(2), &
-          'n=', rows(j)%idx, 'l=', lb, 'm=', m_val
-        ! Line 2: g2(Bohr^-2) | g2(Ang^-2) | norm_lm
-        WRITE(*,'(A,1x,A,ES12.5,1x,A,ES12.5,1x,A,ES10.3)') &
-          'WLM_SUMMARY_CONT', 'g2_bohr=', g2_avg_lm_state, 'g2_ang=', g2_avg_lm_state*bohr2_to_ang2, &
-          'norm_lm=', sum_w2
-        
-        ! CSV format for easy parsing/plotting
-        WRITE(*,'(A,1x,F10.6,1x,F10.6,1x,F10.6,1x,I6,1x,I2,1x,I3,1x,ES16.8,1x,ES16.8,1x,ES16.8)') &
-          'WLM_CSV,STATE_LM', energy, xyk(1), xyk(2), rows(j)%idx, lb, m_val, &
-          g2_avg_lm_state, g2_avg_lm_state*bohr2_to_ang2, sum_w2
-      END IF
-
-    END DO  ! m_idx
-  END DO    ! j
-
-  DEALLOCATE(Wlm2)
-  !
   DEALLOCATE(rows)
-  !
-  ! Mode B.B: State and (l,m)-resolved ⟨g²⟩ (commented out to reduce output)
-  ! Uncomment if detailed orbital character analysis is needed
-  !
-  ! mdim = 2*lb + 1
-  ! DO n = 1, MIN(NKEEP, ntot_m)
-  !   DO m_idx = 1, mdim
-  !     ... (full code available but commented out)
-  !   ENDDO
-  ! ENDDO
   !
   RETURN
 
-END SUBROUTINE compute_mode_b_g2
+END SUBROUTINE compute_mode_b_state
 
 end subroutine four
 !
