@@ -55,9 +55,15 @@ The script generates both visualization plots and analysis tables:
    - Shows which atomic orbitals dominate at the best tunneling energy
    - Helps identify the physical character of the tunneling state
 
-4. **orbital_evolution_vs_E.png** - Orbital character evolution with energy
+4. **orbital_evolution_vs_E.png** - Orbital character evolution with energy (best state)
    - Stacked area plot showing how s, p, d, f contributions change with energy
-   - Reveals energy-dependent orbital character of dominant tunneling channels
+   - Shows the orbital character of the single best (slowest-decaying) state at each energy
+
+5. **orbital_vs_energy_weighted.png** - Weighted orbital contributions vs energy (NEW)
+   - Weighted-average orbital fractions across ALL tunneling-relevant states per energy
+   - Uses filtered states (small κ, reasonable norm) weighted by importance
+   - Provides more comprehensive view than single-state analysis
+   - Particularly useful when multiple states contribute to tunneling at a given energy
 
 #### Tables (CSV and TXT files)
 
@@ -75,6 +81,12 @@ The script generates both visualization plots and analysis tables:
    - Formatted text suitable for copying into paper drafts
    - Ranks states by decay constant with orbital character analysis
    - Provides clear physics statements about tunneling
+
+4. **wlm_orbital_vs_energy.csv** - Weighted orbital fractions per energy (NEW)
+   - Energy-resolved s, p, d, f contributions computed via weighted averaging
+   - Columns: E_eV, frac_s, frac_p, frac_d, frac_f
+   - Each row represents the collective orbital character at that energy
+   - Can be plotted directly or imported for further analysis
 
 ### Example Output
 
@@ -173,6 +185,42 @@ The analysis identifies which atomic orbitals carry the tunneling current:
 | l=3, m=±2,±3 | **f_xyz, etc.** | Various f-orbital characters |
 
 High contributions from **p_z** or **d_z²−1** orbitals indicate tunneling aligned with the transport direction, which typically leads to higher transmission coefficients.
+
+### Weighted Orbital Analysis (NEW)
+
+The weighted orbital analysis provides a more comprehensive picture of tunneling character at each energy by considering **all** tunneling-relevant states, not just the single best state.
+
+#### How it works:
+
+1. **Filter states** by thresholds:
+   - κ (decay constant) ≤ 0.5 Bohr⁻¹ (configurable)
+   - norm ≥ 10⁻³ (configurable)
+   
+2. **Weight each state** by its importance:
+   - Default: uses state norm as weight
+   - Alternatively: could use exp(-2κL) for barrier thickness L
+   
+3. **Compute weighted average** of orbital fractions:
+   ```
+   F_l(E) = Σ_j [weight_j × frac_l^(j)] / Σ_j weight_j
+   ```
+   where j sums over all filtered states at energy E
+
+#### When to use weighted vs single-state analysis:
+
+| Scenario | Best Analysis |
+|----------|---------------|
+| One dominant state per energy | Either approach works similarly |
+| Multiple states contribute | **Weighted** gives complete picture |
+| Near resonances/crossings | **Weighted** captures all contributions |
+| Far from resonances | Single-state may be sufficient |
+
+#### Output:
+
+- **CSV**: `wlm_orbital_vs_energy.csv` with columns E_eV, frac_s, frac_p, frac_d, frac_f
+- **Plot**: `orbital_vs_energy_weighted.png` showing stacked area curves
+
+This provides the data structure suggested in the problem statement for combining orbital contributions across states at each energy.
 
 ### Using Tables in Research Papers
 
@@ -297,13 +345,19 @@ Based on the analysis output, you can write statements like:
    - Get precise percentages for each orbital contribution
    - Identify trends in orbital character vs energy
 
-4. **Use the text summary** (`wlm_tables_summary.txt`):
+4. **Examine weighted orbital CSV** (`wlm_orbital_vs_energy.csv`) (NEW):
+   - Get energy-dependent orbital fractions averaged across all relevant states
+   - Use for comprehensive statements about tunneling character vs energy
+   - Plot or analyze trends in collective orbital contributions
+
+5. **Use the text summary** (`wlm_tables_summary.txt`):
    - Copy relevant sections into your paper
    - Adapt the language to match your writing style
 
-5. **Include plots in your paper**:
+6. **Include plots in your paper**:
    - κ(E) plot shows where tunneling is strongest
    - Orbital evolution plot shows energy-dependent character
+   - Weighted orbital plot shows comprehensive multi-state analysis
    - Orbital bar chart illustrates dominant channels
 
 ### Example Physics Statements
@@ -313,6 +367,9 @@ Based on the analysis output, you can write statements like:
 
 **From orbital evolution plot**:
 > "As energy increases from 5.4 eV to 6.9 eV, the dominant tunneling channel transitions from predominantly s-character to mixed d-f character, indicating a change in the electronic structure of the evanescent states."
+
+**From weighted orbital analysis (NEW)**:
+> "Using weighted-average orbital decomposition across all tunneling-relevant states (κ < 0.5 Bohr⁻¹), we find that at E = 5.4 eV the collective tunneling character is 65% s-orbital and 30% p-orbital, while at E = 6.9 eV it shifts to 48% d-orbital and 28% f-orbital character. This weighted analysis accounts for contributions from multiple evanescent channels and provides a comprehensive view of the orbital composition of the tunneling current."
 
 **From combined κ(E) and orbital analysis**:
 > "The minimum decay constant occurs at E = 6.9 eV where the tunneling channel is dominated by d_z²−1 and f_z(5z²−3r²) orbitals, both aligned with the transport direction, which explains the enhanced transmission at this energy."
