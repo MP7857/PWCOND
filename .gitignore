@@ -1,0 +1,12 @@
+# Fortran compiled modules and objects
+*.mod
+*.o
+*.a
+*.x
+
+# Temporary files
+*~
+*_tmp.f90
+*.d
+*.i
+*.L
