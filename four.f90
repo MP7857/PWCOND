@@ -108,12 +108,93 @@ implicit none
                x3(ir)=betar(ir)*bessj(0,gn*rz)/r(ir)**2
                x4(ir)=betar(ir)*bessj(0,gn*rz)
             elseif (lb.eq.3) then
-               x1(ir)=betar(ir)*bessj(3,gn*rz)*rz**3/r(ir)**3
-               x2(ir)=betar(ir)*bessj(2,gn*rz)*rz**2/r(ir)**3
-               x3(ir)=betar(ir)*bessj(1,gn*rz)*rz/r(ir)**3
-               x4(ir)=betar(ir)*bessj(1,gn*rz)*rz**3/r(ir)**3
-               x5(ir)=betar(ir)*bessj(0,gn*rz)/r(ir)**3
-               x6(ir)=betar(ir)*bessj(0,gn*rz)*rz**2/r(ir)**3
+               !
+               ! Anti-aliasing fix for f-orbital (l=3): supersample Bessel functions
+               ! over the radial bin to reduce aliasing at high momentum (large gn).
+               ! We compute averaged Bessel values b0_avg..b3_avg by trapezoidal
+               ! integration over n_sub sub-points within [r_start, r_end].
+               !
+               block
+                  integer, parameter :: n_sub = 20
+                  integer :: isub
+                  real(DP) :: r_start, r_end, dr_sub, r_sub, rz_sub, w_sub
+                  real(DP) :: b0_sum, b1_sum, b2_sum, b3_sum, w_total
+                  real(DP) :: b0_avg, b1_avg, b2_avg, b3_avg
+
+                  ! Define radial bin boundaries using midpoints
+                  if (ir .eq. iz) then
+                     r_start = r(ir)
+                     if (ir .lt. nmeshs) then
+                        r_end = 0.5d0*(r(ir) + r(ir+1))
+                     else
+                        r_end = r(ir)
+                     endif
+                  elseif (ir .eq. nmeshs) then
+                     r_start = 0.5d0*(r(ir-1) + r(ir))
+                     r_end = r(ir)
+                  else
+                     r_start = 0.5d0*(r(ir-1) + r(ir))
+                     r_end = 0.5d0*(r(ir) + r(ir+1))
+                  endif
+
+                  ! Fallback to single-point if bin is degenerate
+                  if (r_end .le. r_start) then
+                     x1(ir)=betar(ir)*bessj(3,gn*rz)*rz**3/r(ir)**3
+                     x2(ir)=betar(ir)*bessj(2,gn*rz)*rz**2/r(ir)**3
+                     x3(ir)=betar(ir)*bessj(1,gn*rz)*rz/r(ir)**3
+                     x4(ir)=betar(ir)*bessj(1,gn*rz)*rz**3/r(ir)**3
+                     x5(ir)=betar(ir)*bessj(0,gn*rz)/r(ir)**3
+                     x6(ir)=betar(ir)*bessj(0,gn*rz)*rz**2/r(ir)**3
+                  else
+                     dr_sub = (r_end - r_start) / n_sub
+                     b0_sum = 0.d0
+                     b1_sum = 0.d0
+                     b2_sum = 0.d0
+                     b3_sum = 0.d0
+                     w_total = 0.d0
+
+                     do isub = 0, n_sub
+                        r_sub = r_start + isub * dr_sub
+                        ! Only include points where r_sub**2 > zsl(kz)**2
+                        if (r_sub**2 .gt. zsl(kz)**2) then
+                           rz_sub = sqrt(r_sub**2 - zsl(kz)**2)
+                           ! Trapezoidal weight: 0.5 at endpoints, 1.0 otherwise
+                           if (isub .eq. 0 .or. isub .eq. n_sub) then
+                              w_sub = 0.5d0
+                           else
+                              w_sub = 1.d0
+                           endif
+                           b0_sum = b0_sum + w_sub * bessj(0, gn*rz_sub)
+                           b1_sum = b1_sum + w_sub * bessj(1, gn*rz_sub)
+                           b2_sum = b2_sum + w_sub * bessj(2, gn*rz_sub)
+                           b3_sum = b3_sum + w_sub * bessj(3, gn*rz_sub)
+                           w_total = w_total + w_sub
+                        endif
+                     enddo
+
+                     ! Compute averaged Bessel values
+                     if (w_total .gt. 0.d0) then
+                        b0_avg = b0_sum / w_total
+                        b1_avg = b1_sum / w_total
+                        b2_avg = b2_sum / w_total
+                        b3_avg = b3_sum / w_total
+                     else
+                        ! Fallback if no valid sub-points
+                        b0_avg = bessj(0, gn*rz)
+                        b1_avg = bessj(1, gn*rz)
+                        b2_avg = bessj(2, gn*rz)
+                        b3_avg = bessj(3, gn*rz)
+                     endif
+
+                     ! Apply averaged Bessel values with original r-factors at r(ir)
+                     x1(ir)=betar(ir)*b3_avg*rz**3/r(ir)**3
+                     x2(ir)=betar(ir)*b2_avg*rz**2/r(ir)**3
+                     x3(ir)=betar(ir)*b1_avg*rz/r(ir)**3
+                     x4(ir)=betar(ir)*b1_avg*rz**3/r(ir)**3
+                     x5(ir)=betar(ir)*b0_avg/r(ir)**3
+                     x6(ir)=betar(ir)*b0_avg*rz**2/r(ir)**3
+                  endif
+               end block
             else
                call errore ('four','ls not programmed ',1)
             endif
@@ -171,8 +252,8 @@ implicit none
             if(iz.eq.1) then
                x5(iz-1)=0.d0
             else
-               small_eps = 1.d-10  ! Fix for singularity at small zsl
-               x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3 + small_eps)
+               ! Fix for singularity at small zsl
+               x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3 + 1.d-10)
             endif
             x6(iz-1)=0.d0
             fx5(kz)=fx5(kz)+(x5(iz-1)+x5(iz))*0.5d0*zr
