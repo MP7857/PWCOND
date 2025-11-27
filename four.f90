@@ -144,7 +144,13 @@ implicit none
                call errore ('four','ls not programmed ',1)
             endif
          enddo
-         call simpson(nmeshs-iz+1,x1(iz),rab(iz),fx1(kz))
+         !
+         ! Simpson integration for x1 (skip if lb=3 with refined quadrature,
+         ! which handles all integrals via integrate_f_segments)
+         !
+         if (.not.(lb.eq.3 .and. refine_f_quadrature)) then
+            call simpson(nmeshs-iz+1,x1(iz),rab(iz),fx1(kz))
+         endif
          if (iz.eq.1) then
             dr=r(iz)
          else
@@ -158,7 +164,8 @@ implicit none
                x1(iz-1)=betar(iz)-(betar(iz)-betar(iz-1))/dr*zr
             endif
             fx1(kz)=fx1(kz)+(x1(iz-1)+x1(iz))*0.5d0*zr
-         else
+         elseif (.not.(lb.eq.3 .and. refine_f_quadrature)) then
+            ! Endpoint correction for fx1 and Simpson x2 (skip if lb=3 refined)
             fx1(kz)=fx1(kz)+x1(iz)*0.5d0*zr
             call simpson(nmeshs-iz+1,x2(iz),rab(iz),fx2(kz))
          endif
