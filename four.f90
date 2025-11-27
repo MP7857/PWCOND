@@ -515,6 +515,7 @@ contains
     real(DP), intent(out) :: fx1_seg, fx2_seg, fx3_seg, fx4_seg, fx5_seg, fx6_seg
 
     ! 4-point Gauss-Legendre nodes and weights on [-1, 1]
+    ! Reference: Abramowitz & Stegun, Table 25.4 (n=4)
     real(DP), parameter :: xi(4) = (/ -0.861136311594053d0, &
                                       -0.339981043584856d0, &
                                        0.339981043584856d0, &
@@ -541,6 +542,9 @@ contains
     fx4_seg = 0.d0
     fx5_seg = 0.d0
     fx6_seg = 0.d0
+
+    ! Guard against zero-width segments
+    if (abs(dr) < 1.d-15) return
 
     ! Loop over 4 Gauss-Legendre points
     do k = 1, 4
