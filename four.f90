@@ -353,7 +353,12 @@ implicit none
   ! DEBUG: output w0 data for sign/phase diagnostics
   ! Writes to unit 77 for kz=kz0, all g-vectors
   !
+  ! DEBUG: output w0 data for sign/phase diagnostics
+  ! Writes to unit 77 for kz=kz0, all g-vectors (only for lb=3)
+  ! File is opened/closed here to avoid requiring external setup
+  !
   if (debug_four .and. lb.eq.3) then
+     open(unit=77, file='debug_four.dat', status='unknown', position='append')
      do ig = 1, ngper
         if (kz0 >= 1 .and. kz0 <= nz1) then
            write(77,'(2f16.8,14f16.8)') gper(1,ig)*tpiba, gper(2,ig)*tpiba, &
@@ -366,6 +371,7 @@ implicit none
                 real(w0(kz0,ig,7)),aimag(w0(kz0,ig,7))
         endif
      enddo
+     close(77)
   endif
 
   deallocate(x1)
