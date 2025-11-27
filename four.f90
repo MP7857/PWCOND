@@ -195,6 +195,24 @@ implicit none
                call integrate_f_segments(gn, zsl(kz), r, nmeshs, iz, betar, &
                                          fx1(kz), fx2(kz), fx3(kz), fx4(kz), &
                                          fx5(kz), fx6(kz))
+               !
+               ! Add endpoint corrections to match original Simpson behavior.
+               ! These handle the partial integral near r ≈ |z| that the segment-based
+               ! integration skips. Critical for numerical consistency with original code.
+               !
+               fx1(kz)=fx1(kz)+x1(iz)*0.5d0*zr
+               fx2(kz)=fx2(kz)+x2(iz)*0.5d0*zr
+               fx3(kz)=fx3(kz)+x3(iz)*0.5d0*zr
+               fx4(kz)=fx4(kz)+x4(iz)*0.5d0*zr
+               if(iz.eq.1) then
+                  x5(iz-1)=0.d0
+               else
+                  x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr) / &
+                           (abs(zsl(kz))**3 + eps_r_f)
+               endif
+               x6(iz-1)=0.d0
+               fx5(kz)=fx5(kz)+(x5(iz-1)+x5(iz))*0.5d0*zr
+               fx6(kz)=fx6(kz)+(x6(iz-1)+x6(iz))*0.5d0*zr
             else
                !
                ! Original Simpson-based integration for f-channel (lb=3)
