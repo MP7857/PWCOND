@@ -120,6 +120,10 @@ implicit none
                   real(DP) :: r_start, r_end, dr_sub, r_sub, rz_sub, w_sub
                   real(DP) :: b0_sum, b1_sum, b2_sum, b3_sum, w_total
                   real(DP) :: b0_avg, b1_avg, b2_avg, b3_avg
+                  real(DP) :: zsl_sq
+
+                  ! Pre-compute zsl(kz)**2 for efficiency
+                  zsl_sq = zsl(kz)**2
 
                   ! Define radial bin boundaries using midpoints
                   if (ir .eq. iz) then
@@ -137,7 +141,7 @@ implicit none
                      r_end = 0.5d0*(r(ir) + r(ir+1))
                   endif
 
-                  ! Fallback to single-point if bin is degenerate
+                  ! Fallback to single-point if bin is degenerate (r_end <= r_start)
                   if (r_end .le. r_start) then
                      x1(ir)=betar(ir)*bessj(3,gn*rz)*rz**3/r(ir)**3
                      x2(ir)=betar(ir)*bessj(2,gn*rz)*rz**2/r(ir)**3
@@ -155,9 +159,9 @@ implicit none
 
                      do isub = 0, n_sub
                         r_sub = r_start + isub * dr_sub
-                        ! Only include points where r_sub**2 > zsl(kz)**2
-                        if (r_sub**2 .gt. zsl(kz)**2) then
-                           rz_sub = sqrt(r_sub**2 - zsl(kz)**2)
+                        ! Only include points where r_sub**2 > zsl_sq
+                        if (r_sub**2 .gt. zsl_sq) then
+                           rz_sub = sqrt(r_sub**2 - zsl_sq)
                            ! Trapezoidal weight: 0.5 at endpoints, 1.0 otherwise
                            if (isub .eq. 0 .or. isub .eq. n_sub) then
                               w_sub = 0.5d0
