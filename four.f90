@@ -51,6 +51,13 @@ implicit none
 
   integer :: kz, ig, ign, igphi, &
              indexr, iz, lb, ir, nmesh, nmeshs, tblm(4)
+  !
+  ! DEBUG: parameters for sign/phase diagnostics (set to desired values)
+  !   kz0, ign0: target z-slice and g-shell for debug output to unit 77
+  !   Set debug_four = .true. to enable output
+  !
+  logical, parameter :: debug_four = .false.
+  integer, parameter :: kz0 = 1, ign0 = 1
   real(DP), parameter :: eps=1.d-8
   complex(DP), parameter :: cim=(0.d0, 1.d0)
   !
@@ -334,6 +341,25 @@ implicit none
       endif
     enddo
   enddo
+
+  !
+  ! DEBUG: output w0 data for sign/phase diagnostics
+  ! Writes to unit 77 for kz=kz0, all g-vectors
+  !
+  if (debug_four .and. lb.eq.3) then
+     do ig = 1, ngper
+        if (kz0 >= 1 .and. kz0 <= nz1) then
+           write(77,'(2f16.8,14f16.8)') gper(1,ig)*tpiba, gper(2,ig)*tpiba, &
+                real(w0(kz0,ig,1)),aimag(w0(kz0,ig,1)), &
+                real(w0(kz0,ig,2)),aimag(w0(kz0,ig,2)), &
+                real(w0(kz0,ig,3)),aimag(w0(kz0,ig,3)), &
+                real(w0(kz0,ig,4)),aimag(w0(kz0,ig,4)), &
+                real(w0(kz0,ig,5)),aimag(w0(kz0,ig,5)), &
+                real(w0(kz0,ig,6)),aimag(w0(kz0,ig,6)), &
+                real(w0(kz0,ig,7)),aimag(w0(kz0,ig,7))
+        endif
+     enddo
+  endif
 
   deallocate(x1)
   deallocate(x2)
