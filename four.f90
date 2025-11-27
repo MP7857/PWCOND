@@ -63,7 +63,7 @@ implicit none
   !   (See four.tex for derivation and rationale.)
   !
   logical, parameter :: refine_f_quadrature = .false.
-  real(DP), parameter :: eps_r_f = 1.d-8
+  real(DP), parameter :: eps_r_f = 1.d-10
   real(DP), parameter :: dphi_smooth_f = 0.5d0
   !
   real(DP) :: gn, s1, s2, s3, s4, cs, sn, cs2, sn2, cs3, sn3, rz, dz1, zr, &
