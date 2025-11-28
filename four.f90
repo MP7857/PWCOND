@@ -171,8 +171,7 @@ implicit none
             if(iz.eq.1) then
                x5(iz-1)=0.d0
             else
-               small_eps = 1.d-10  ! Fix for singularity at small zsl
-               x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3 + small_eps)
+               x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3)
             endif
             x6(iz-1)=0.d0
             fx5(kz)=fx5(kz)+(x5(iz-1)+x5(iz))*0.5d0*zr
