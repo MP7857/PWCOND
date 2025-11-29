@@ -56,6 +56,11 @@ implicit none
   complex(DP), allocatable :: wadd(:,:), wadd2(:,:), wadd3(:,:)
   complex(DP) :: t1, t2, t3, t4, t5, t6, t7, wa1, wa2, wa3
 
+  ! Variables for improved f-orbital integration (Local Adaptive Refinement)
+  integer :: isub, nsub
+  real(DP) :: r_left, r_right, wsub, fx5_sub
+  real(DP), dimension(0:10) :: rsub, rzsub, betasub, x5sub
+
 
   allocate( x1(0:ndmx) )
   allocate( x2(0:ndmx) )
@@ -166,15 +171,76 @@ implicit none
             fx3(kz)=fx3(kz)+x3(iz)*0.5d0*zr
             call simpson(nmeshs-iz+1,x4(iz),rab(iz),fx4(kz))
             fx4(kz)=fx4(kz)+x4(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x5(iz),rab(iz),fx5(kz))
-            call simpson(nmeshs-iz+1,x6(iz),rab(iz),fx6(kz))
-            if(iz.eq.1) then
-               x5(iz-1)=0.d0
-            else
-               x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3)
+            ! ===============================================================
+            ! IMPROVED F-INTEGRATION using Local Adaptive Refinement (LAR)
+            ! for x5 integral which has 1/r^3 singularity behavior
+            ! ===============================================================
+            nsub = 10   ! Moderate local refinement
+
+            fx5(kz) = 0.d0
+
+            ! 1. MAIN SIMPSON from ir = iz+1 to end
+            if (iz+1 <= nmeshs) then
+               call simpson(nmeshs-(iz+1)+1, x5(iz+1), rab(iz+1), fx5(kz))
             endif
-            x6(iz-1)=0.d0
-            fx5(kz)=fx5(kz)+(x5(iz-1)+x5(iz))*0.5d0*zr
+
+            ! 2. LOCAL REFINEMENT: interval [iz-1 -> iz]
+            if (iz > 1) then
+               r_left  = r(iz-1)
+               r_right = r(iz)
+               wsub = (r_right - r_left)/nsub
+
+               do isub = 0, nsub
+                  rsub(isub) = r_left + wsub*isub
+                  rzsub(isub) = rsub(isub)*rsub(isub) - zsl(kz)**2
+                  if (rzsub(isub) > 0.d0) then
+                     rzsub(isub) = sqrt(rzsub(isub))
+                  else
+                     rzsub(isub) = 0.d0
+                  endif
+                  ! linear interpolation for betar
+                  betasub(isub) = betar(iz-1) + &
+                      (betar(iz)-betar(iz-1))*(isub*1.d0/nsub)
+                  x5sub(isub) = betasub(isub)*bessj(0,gn*rzsub(isub))/rsub(isub)**3
+               enddo
+
+               call simpson(nsub+1, x5sub(0), wsub, fx5_sub)
+               fx5(kz) = fx5(kz) + fx5_sub
+            endif
+
+            ! 3. LOCAL REFINEMENT: interval [iz -> iz+1]
+            if (iz < nmeshs) then
+               r_left  = r(iz)
+               r_right = r(iz+1)
+               wsub = (r_right - r_left)/nsub
+
+               do isub = 0, nsub
+                  rsub(isub) = r_left + wsub*isub
+                  rzsub(isub) = rsub(isub)*rsub(isub) - zsl(kz)**2
+                  if (rzsub(isub) > 0.d0) then
+                     rzsub(isub) = sqrt(rzsub(isub))
+                  else
+                     rzsub(isub) = 0.d0
+                  endif
+                  betasub(isub) = betar(iz) + &
+                      (betar(iz+1)-betar(iz))*(isub*1.d0/nsub)
+                  x5sub(isub) = betasub(isub)*bessj(0,gn*rzsub(isub))/rsub(isub)**3
+               enddo
+
+               call simpson(nsub+1, x5sub(0), wsub, fx5_sub)
+               fx5(kz) = fx5(kz) + fx5_sub
+            endif
+            ! ===============================================================
+            ! END IMPROVED F-INTEGRATION
+            ! ===============================================================
+
+            ! x6: linear, non-singular -> keep original trapezoid integration
+            call simpson(nmeshs-iz+1,x6(iz),rab(iz),fx6(kz))
+            if (iz > 1) then
+               x6(iz-1) = x6(iz)
+            else
+               x6(iz-1) = 0.d0
+            endif
             fx6(kz)=fx6(kz)+(x6(iz-1)+x6(iz))*0.5d0*zr
          endif
        else
