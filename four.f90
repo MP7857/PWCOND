@@ -57,9 +57,10 @@ implicit none
   complex(DP) :: t1, t2, t3, t4, t5, t6, t7, wa1, wa2, wa3
 
   ! Variables for improved f-orbital integration (Local Adaptive Refinement)
-  integer :: isub, nsub
-  real(DP) :: r_left, r_right, wsub, fx5_sub
-  real(DP), dimension(0:10) :: rsub, rzsub, betasub, x5sub
+  integer :: isub
+  integer, parameter :: nsub = 10  ! Number of subdivisions for local refinement
+  real(DP) :: r_left, r_right, wsub, fx5_sub, inv_nsub
+  real(DP), dimension(0:nsub) :: rsub, rzsub, betasub, x5sub
 
 
   allocate( x1(0:ndmx) )
@@ -175,9 +176,8 @@ implicit none
             ! IMPROVED F-INTEGRATION using Local Adaptive Refinement (LAR)
             ! for x5 integral which has 1/r^3 singularity behavior
             ! ===============================================================
-            nsub = 10   ! Moderate local refinement
-
             fx5(kz) = 0.d0
+            inv_nsub = 1.d0/nsub  ! Precompute for efficiency
 
             ! 1. MAIN SIMPSON from ir = iz+1 to end
             if (iz+1 <= nmeshs) then
@@ -188,7 +188,7 @@ implicit none
             if (iz > 1) then
                r_left  = r(iz-1)
                r_right = r(iz)
-               wsub = (r_right - r_left)/nsub
+               wsub = (r_right - r_left)*inv_nsub
 
                do isub = 0, nsub
                   rsub(isub) = r_left + wsub*isub
@@ -200,7 +200,7 @@ implicit none
                   endif
                   ! linear interpolation for betar
                   betasub(isub) = betar(iz-1) + &
-                      (betar(iz)-betar(iz-1))*(isub*1.d0/nsub)
+                      (betar(iz)-betar(iz-1))*(isub*inv_nsub)
                   x5sub(isub) = betasub(isub)*bessj(0,gn*rzsub(isub))/rsub(isub)**3
                enddo
 
@@ -212,7 +212,7 @@ implicit none
             if (iz < nmeshs) then
                r_left  = r(iz)
                r_right = r(iz+1)
-               wsub = (r_right - r_left)/nsub
+               wsub = (r_right - r_left)*inv_nsub
 
                do isub = 0, nsub
                   rsub(isub) = r_left + wsub*isub
@@ -223,7 +223,7 @@ implicit none
                      rzsub(isub) = 0.d0
                   endif
                   betasub(isub) = betar(iz) + &
-                      (betar(iz+1)-betar(iz))*(isub*1.d0/nsub)
+                      (betar(iz+1)-betar(iz))*(isub*inv_nsub)
                   x5sub(isub) = betasub(isub)*bessj(0,gn*rzsub(isub))/rsub(isub)**3
                enddo
 
@@ -236,11 +236,7 @@ implicit none
 
             ! x6: linear, non-singular -> keep original trapezoid integration
             call simpson(nmeshs-iz+1,x6(iz),rab(iz),fx6(kz))
-            if (iz > 1) then
-               x6(iz-1) = x6(iz)
-            else
-               x6(iz-1) = 0.d0
-            endif
+            x6(iz-1) = 0.d0
             fx6(kz)=fx6(kz)+(x6(iz-1)+x6(iz))*0.5d0*zr
          endif
        else
