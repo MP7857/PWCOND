@@ -44,9 +44,11 @@ def parse_w0_debug(filename):
     current_orbital = None
     current_z0 = None
     current_dz = None
+    skipped_lines = 0
     
     with open(filename, 'r') as f:
         for line in f:
+            original_line = line
             line = line.strip()
             
             # Skip empty lines
@@ -69,26 +71,48 @@ def parse_w0_debug(filename):
             elif line.startswith('#'):
                 continue
             else:
-                # Parse data line using fixed-width column format from Fortran
-                # Format: I4, I6, I2, E16.8, E16.8, E20.12, E20.12
                 # Handle Fortran exponential format (D instead of E)
                 line = line.replace('D', 'E').replace('d', 'e')
+                
+                # Skip corrupted lines (lines that don't start with a number or are too short)
+                if not line or not line[0].isdigit() and line[0] not in ' -':
+                    skipped_lines += 1
+                    continue
+                
+                # Skip lines that appear to be partial/corrupted (contain multiple records or strange patterns)
+                if line.count('E+') + line.count('E-') > 4:  # Too many exponents - likely merged lines
+                    skipped_lines += 1
+                    continue
+                    
                 try:
-                    # Fixed-width parsing based on Fortran format
-                    # Columns: kz(1-4), ig(5-10), m(11-12), zsl(13-28), gn(29-44), Re(45-64), Im(65-84)
-                    if len(line) >= 64 and current_orbital is not None:
-                        kz = int(line[0:4].strip())
-                        ig = int(line[4:10].strip())
-                        m_idx = int(line[10:12].strip())
-                        zsl = float(line[12:28].strip())
-                        gn = float(line[28:44].strip())
-                        re_w0 = float(line[44:64].strip())
-                        im_w0 = float(line[64:84].strip()) if len(line) >= 84 else 0.0
+                    # Try whitespace-based parsing first (works for well-formatted data)
+                    parts = line.split()
+                    if len(parts) >= 7 and current_orbital is not None:
+                        # Validate that first 3 parts look like integers
+                        kz = int(parts[0])
+                        ig = int(parts[1])
+                        m_idx = int(parts[2])
+                        
+                        # Validate reasonable ranges
+                        if kz < 1 or kz > 10000 or ig < 1 or ig > 100000:
+                            skipped_lines += 1
+                            continue
+                        
+                        zsl = float(parts[3])
+                        gn = float(parts[4])
+                        re_w0 = float(parts[5])
+                        im_w0 = float(parts[6])
                         
                         # Validate m_idx is within expected range for this orbital
                         max_m = M_COUNT.get(current_orbital, 7)
                         if m_idx < 1 or m_idx > max_m:
+                            skipped_lines += 1
                             continue  # Skip invalid entries
+                        
+                        # Skip entries with unreasonably large values (likely parsing errors)
+                        if abs(re_w0) > 1e10 or abs(im_w0) > 1e10:
+                            skipped_lines += 1
+                            continue
                         
                         data.append({
                             'lb': current_orbital,
@@ -104,7 +128,11 @@ def parse_w0_debug(filename):
                             'w0': complex(re_w0, im_w0)
                         })
                 except (ValueError, IndexError) as e:
+                    skipped_lines += 1
                     continue
+    
+    if skipped_lines > 0:
+        print(f"Note: Skipped {skipped_lines} corrupted/invalid lines during parsing")
     
     return data
 
