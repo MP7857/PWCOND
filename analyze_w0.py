@@ -23,14 +23,20 @@ from collections import defaultdict
 # Orbital type names
 ORBITAL_NAMES = {0: 's', 1: 'p', 2: 'd', 3: 'f'}
 
-# Expected m-values for each orbital type
+# Expected m-values for each orbital type (index 1-based as in Fortran)
+# m index -> (actual m quantum number, name)
 M_VALUES = {
-    0: ['m=0'],           # s: 1 component
-    1: ['pz', 'p-x', 'p-y'],  # p: 3 components
-    2: ['dz2-1', 'd-xz', 'd-yz', 'dx2-y2', 'dxy'],  # d: 5 components
-    3: ['fz(5z2-3r2)', 'fx(5z2-r2)', 'f-y(5z2-r2)', 
-        'fz(x2-y2)', 'f-xyz', 'fx(x2-3y2)', 'f-y(3x2-y2)']  # f: 7 components
+    0: {1: (0, 'm=0')},           # s: 1 component (m=0)
+    1: {1: (0, 'pz'), 2: (-1, 'p-x'), 3: (-1, 'p-y')},  # p: 3 components
+    2: {1: (0, 'dz2'), 2: (-1, 'd-xz'), 3: (-1, 'd-yz'), 
+        4: (2, 'dx2-y2'), 5: (2, 'dxy')},  # d: 5 components
+    3: {1: (0, 'fz3'), 2: (1, 'fx(5z2-r2)'), 3: (-1, 'f-y(5z2-r2)'), 
+        4: (2, 'fz(x2-y2)'), 5: (-2, 'f-xyz'), 
+        6: (3, 'fx(x2-3y2)'), 7: (-3, 'f-y(3x2-y2)')}  # f: 7 components
 }
+
+# Number of m-components for each orbital type
+M_COUNT = {0: 1, 1: 3, 2: 5, 3: 7}
 
 def parse_w0_debug(filename):
     """Parse w0_debug.dat file and return structured data."""
@@ -53,27 +59,34 @@ def parse_w0_debug(filename):
                 if match:
                     current_orbital = int(match.group(1))
             elif line.startswith('# z0 ='):
-                match = re.search(r'z0 = \s*([-\d.E+]+)', line)
+                match = re.search(r'z0 = \s*([-\d.E+]+)', line, re.IGNORECASE)
                 if match:
                     current_z0 = float(match.group(1))
             elif line.startswith('# dz ='):
-                match = re.search(r'dz = \s*([-\d.E+]+)', line)
+                match = re.search(r'dz = \s*([-\d.E+]+)', line, re.IGNORECASE)
                 if match:
                     current_dz = float(match.group(1))
             elif line.startswith('#'):
                 continue
             else:
                 # Parse data line: kz, ig, m, zsl, gn, Re(w0), Im(w0)
+                # Handle Fortran exponential format (D instead of E)
+                line = line.replace('D', 'E').replace('d', 'e')
                 try:
                     parts = line.split()
-                    if len(parts) >= 7:
+                    if len(parts) >= 7 and current_orbital is not None:
                         kz = int(parts[0])
                         ig = int(parts[1])
-                        m = int(parts[2])
+                        m_idx = int(parts[2])
                         zsl = float(parts[3])
                         gn = float(parts[4])
                         re_w0 = float(parts[5])
                         im_w0 = float(parts[6])
+                        
+                        # Validate m_idx is within expected range for this orbital
+                        max_m = M_COUNT.get(current_orbital, 7)
+                        if m_idx < 1 or m_idx > max_m:
+                            continue  # Skip invalid entries
                         
                         data.append({
                             'lb': current_orbital,
@@ -81,17 +94,23 @@ def parse_w0_debug(filename):
                             'dz': current_dz,
                             'kz': kz,
                             'ig': ig,
-                            'm': m,
+                            'm_idx': m_idx,  # 1-based index
                             'zsl': zsl,
                             'gn': gn,
                             're_w0': re_w0,
                             'im_w0': im_w0,
                             'w0': complex(re_w0, im_w0)
                         })
-                except (ValueError, IndexError):
+                except (ValueError, IndexError) as e:
                     continue
     
     return data
+
+def get_m_name(lb, m_idx):
+    """Get the name of the m-component for a given orbital and index."""
+    if lb in M_VALUES and m_idx in M_VALUES[lb]:
+        return M_VALUES[lb][m_idx][1]
+    return f'm_idx={m_idx}'
 
 def analyze_signs(data):
     """Analyze sign patterns of w0 values."""
@@ -99,15 +118,15 @@ def analyze_signs(data):
     print("SIGN ANALYSIS")
     print("="*60)
     
-    # Group by orbital type and m
+    # Group by orbital type and m_idx
     by_orbital_m = defaultdict(list)
     for d in data:
-        key = (d['lb'], d['m'])
+        key = (d['lb'], d['m_idx'])
         by_orbital_m[key].append(d)
     
-    for (lb, m), entries in sorted(by_orbital_m.items()):
+    for (lb, m_idx), entries in sorted(by_orbital_m.items()):
         orbital_name = ORBITAL_NAMES.get(lb, f'l={lb}')
-        m_name = M_VALUES.get(lb, [f'm={m}'])[m-1] if m <= len(M_VALUES.get(lb, [])) else f'm={m}'
+        m_name = get_m_name(lb, m_idx)
         
         re_vals = [e['re_w0'] for e in entries]
         im_vals = [e['im_w0'] for e in entries]
@@ -121,7 +140,7 @@ def analyze_signs(data):
         im_neg = sum(1 for v in im_vals if v < -1e-12)
         im_zero = len(im_vals) - im_pos - im_neg
         
-        print(f"\n{orbital_name}-orbital, {m_name} (lb={lb}, m={m}):")
+        print(f"\n{orbital_name}-orbital, {m_name} (lb={lb}, m_idx={m_idx}):")
         print(f"  Total entries: {len(entries)}")
         print(f"  Re(w0): {re_pos} positive, {re_neg} negative, {re_zero} ~zero")
         print(f"  Im(w0): {im_pos} positive, {im_neg} negative, {im_zero} ~zero")
@@ -132,8 +151,8 @@ def analyze_signs(data):
             print(f"  Im(w0) range: [{min(im_vals):.6e}, {max(im_vals):.6e}]")
         
         # Check for sign consistency based on z
-        z_positive = [e for e in entries if e['zsl'] > 0]
-        z_negative = [e for e in entries if e['zsl'] < 0]
+        z_positive = [e for e in entries if e['zsl'] > 1e-10]
+        z_negative = [e for e in entries if e['zsl'] < -1e-10]
         
         if z_positive and z_negative:
             re_sign_zpos = np.sign([e['re_w0'] for e in z_positive if abs(e['re_w0']) > 1e-12])
@@ -142,9 +161,9 @@ def analyze_signs(data):
             if len(re_sign_zpos) > 0 and len(re_sign_zneg) > 0:
                 if np.all(re_sign_zpos == re_sign_zpos[0]) and np.all(re_sign_zneg == re_sign_zneg[0]):
                     if re_sign_zpos[0] == re_sign_zneg[0]:
-                        print(f"  Sign pattern: SAME sign for z>0 and z<0 (even in z)")
+                        print(f"  Sign pattern: SAME sign for z>0 and z<0 (EVEN in z)")
                     else:
-                        print(f"  Sign pattern: OPPOSITE signs for z>0 and z<0 (odd in z)")
+                        print(f"  Sign pattern: OPPOSITE signs for z>0 and z<0 (ODD in z)")
 
 def analyze_z_dependence(data):
     """Analyze how w0 depends on z position."""
@@ -152,19 +171,19 @@ def analyze_z_dependence(data):
     print("Z-DEPENDENCE ANALYSIS")
     print("="*60)
     
-    # Group by orbital type, m, and g
+    # Group by orbital type, m_idx, and g
     by_orbital_m_g = defaultdict(list)
     for d in data:
-        key = (d['lb'], d['m'], d['ig'])
+        key = (d['lb'], d['m_idx'], d['ig'])
         by_orbital_m_g[key].append(d)
     
     # For each group, analyze z-dependence
-    for (lb, m, ig), entries in sorted(by_orbital_m_g.items()):
+    for (lb, m_idx, ig), entries in sorted(by_orbital_m_g.items()):
         if len(entries) < 2:
             continue
             
         orbital_name = ORBITAL_NAMES.get(lb, f'l={lb}')
-        m_name = M_VALUES.get(lb, [f'm={m}'])[m-1] if m <= len(M_VALUES.get(lb, [])) else f'm={m}'
+        m_name = get_m_name(lb, m_idx)
         
         # Sort by z
         entries_sorted = sorted(entries, key=lambda e: e['zsl'])
@@ -173,7 +192,7 @@ def analyze_z_dependence(data):
         
         # Only print first g-vector for each orbital/m combination
         if ig == 1:
-            print(f"\n{orbital_name}-orbital, {m_name} (lb={lb}, m={m}), ig={ig}:")
+            print(f"\n{orbital_name}-orbital, {m_name} (lb={lb}, m_idx={m_idx}), ig={ig}:")
             print(f"  gn = {entries[0]['gn']:.6e}")
             print(f"  z range: [{min(z_vals):.6f}, {max(z_vals):.6f}]")
             
@@ -193,19 +212,20 @@ def analyze_z_dependence(data):
                 even_count = 0
                 odd_count = 0
                 for e1, e2 in symmetric_pairs:
+                    mag = max(abs(e1['w0']), abs(e2['w0']), 1e-12)
                     # Check if even: w0(z) ≈ w0(-z)
-                    if abs(e1['w0'] - e2['w0']) < 1e-10 * max(abs(e1['w0']), abs(e2['w0']), 1e-12):
+                    if abs(e1['w0'] - e2['w0']) < 1e-6 * mag:
                         even_count += 1
                     # Check if odd: w0(z) ≈ -w0(-z)
-                    elif abs(e1['w0'] + e2['w0']) < 1e-10 * max(abs(e1['w0']), abs(e2['w0']), 1e-12):
+                    elif abs(e1['w0'] + e2['w0']) < 1e-6 * mag:
                         odd_count += 1
                 
-                if even_count > odd_count:
+                if even_count > odd_count and even_count > 0:
                     print(f"  Symmetry: EVEN in z (w0(z) = w0(-z))")
-                elif odd_count > even_count:
+                elif odd_count > even_count and odd_count > 0:
                     print(f"  Symmetry: ODD in z (w0(z) = -w0(-z))")
-                else:
-                    print(f"  Symmetry: MIXED or UNCLEAR")
+                elif even_count > 0 or odd_count > 0:
+                    print(f"  Symmetry: MIXED (even:{even_count}, odd:{odd_count})")
             
             # Show a few sample values
             print(f"  Sample values:")
@@ -222,15 +242,15 @@ def analyze_g_dependence(data):
     print("G-VECTOR DEPENDENCE ANALYSIS")
     print("="*60)
     
-    # Group by orbital type and m, fixed z (middle z point)
+    # Group by orbital type and m_idx, fixed z (middle z point)
     by_orbital_m = defaultdict(list)
     for d in data:
-        key = (d['lb'], d['m'])
+        key = (d['lb'], d['m_idx'])
         by_orbital_m[key].append(d)
     
-    for (lb, m), entries in sorted(by_orbital_m.items()):
+    for (lb, m_idx), entries in sorted(by_orbital_m.items()):
         orbital_name = ORBITAL_NAMES.get(lb, f'l={lb}')
-        m_name = M_VALUES.get(lb, [f'm={m}'])[m-1] if m <= len(M_VALUES.get(lb, [])) else f'm={m}'
+        m_name = get_m_name(lb, m_idx)
         
         # Get unique z values
         z_vals = sorted(set(e['zsl'] for e in entries))
@@ -267,35 +287,36 @@ def check_expected_signs(data):
     print("""
 Expected sign patterns based on spherical harmonics:
 
-For s-orbital (lb=0):
+For s-orbital (lb=0, m_idx=1):
   - w0 should be REAL and EVEN in z
   
 For p-orbital (lb=1):
-  - m=1 (pz): REAL, ODD in z (contains factor z)
-  - m=2,3 (px,py): IMAGINARY, EVEN in z
+  - m_idx=1 (pz): REAL, ODD in z (contains factor z)
+  - m_idx=2,3 (px,py): IMAGINARY, EVEN in z
   
 For d-orbital (lb=2):
-  - m=1 (dz²): REAL, EVEN in z (contains z²)
-  - m=2,3 (dxz,dyz): IMAGINARY, ODD in z (contains z)
-  - m=4,5 (dx²-y²,dxy): REAL, EVEN in z
+  - m_idx=1 (dz²): REAL, EVEN in z (contains z²)
+  - m_idx=2,3 (dxz,dyz): IMAGINARY, ODD in z (contains z)
+  - m_idx=4,5 (dx²-y²,dxy): REAL, EVEN in z
   
 For f-orbital (lb=3):
-  - m=1 (fz³): REAL, ODD in z (contains z³, z)
-  - m=2,3: IMAGINARY, EVEN in z (contains z²)
-  - m=4,5: REAL, ODD in z (contains z)
-  - m=6,7: IMAGINARY, EVEN in z
+  - m_idx=1 (fz³): REAL, ODD in z (contains z³, z)
+  - m_idx=2,3: IMAGINARY, EVEN in z (contains z²)
+  - m_idx=4,5: REAL, ODD in z (contains z)
+  - m_idx=6,7: IMAGINARY, EVEN in z
 """)
     
     # Group and check
     by_orbital_m = defaultdict(list)
     for d in data:
-        key = (d['lb'], d['m'])
+        key = (d['lb'], d['m_idx'])
         by_orbital_m[key].append(d)
     
     issues = []
     
-    for (lb, m), entries in sorted(by_orbital_m.items()):
+    for (lb, m_idx), entries in sorted(by_orbital_m.items()):
         orbital_name = ORBITAL_NAMES.get(lb, f'l={lb}')
+        m_name = get_m_name(lb, m_idx)
         
         re_vals = [e['re_w0'] for e in entries if abs(e['re_w0']) > 1e-15]
         im_vals = [e['im_w0'] for e in entries if abs(e['im_w0']) > 1e-15]
@@ -304,39 +325,49 @@ For f-orbital (lb=3):
         is_imag = len(im_vals) > 0 and len(re_vals) == 0
         is_complex = len(re_vals) > 0 and len(im_vals) > 0
         
-        # Expected properties based on orbital type
+        # Determine expected behavior based on orbital type
+        expected_type = "UNKNOWN"
         if lb == 0:  # s-orbital
-            if not is_real:
-                issues.append(f"s-orbital m={m}: Expected REAL, got {'IMAGINARY' if is_imag else 'COMPLEX'}")
+            expected_type = "REAL"
+            if not is_real and is_complex:
+                # Check if imaginary part is negligible
+                re_mag = max(abs(v) for v in re_vals) if re_vals else 0
+                im_mag = max(abs(v) for v in im_vals) if im_vals else 0
+                if im_mag < 1e-6 * re_mag:
+                    is_real = True
+                    is_complex = False
         elif lb == 1:  # p-orbital
-            if m == 1 and not is_real:
-                issues.append(f"p-orbital m={m} (pz): Expected REAL")
-            elif m in [2, 3] and not is_imag:
-                issues.append(f"p-orbital m={m}: Expected IMAGINARY")
+            if m_idx == 1:  # pz
+                expected_type = "REAL"
+            elif m_idx in [2, 3]:  # px, py
+                expected_type = "IMAGINARY"
         elif lb == 2:  # d-orbital
-            if m == 1 and not is_real:
-                issues.append(f"d-orbital m={m}: Expected REAL")
-            elif m in [2, 3] and not is_imag:
-                issues.append(f"d-orbital m={m}: Expected IMAGINARY")
-            elif m in [4, 5] and not is_real:
-                issues.append(f"d-orbital m={m}: Expected REAL")
+            if m_idx == 1:  # dz²
+                expected_type = "REAL"
+            elif m_idx in [2, 3]:  # dxz, dyz
+                expected_type = "IMAGINARY"
+            elif m_idx in [4, 5]:  # dx²-y², dxy
+                expected_type = "REAL"
         elif lb == 3:  # f-orbital
-            if m == 1 and not is_real:
-                issues.append(f"f-orbital m={m}: Expected REAL")
-            elif m in [2, 3] and not is_imag:
-                issues.append(f"f-orbital m={m}: Expected IMAGINARY")
-            elif m in [4, 5] and not is_real:
-                issues.append(f"f-orbital m={m}: Expected REAL")
-            elif m in [6, 7] and not is_imag:
-                issues.append(f"f-orbital m={m}: Expected IMAGINARY")
+            if m_idx == 1:  # fz³
+                expected_type = "REAL"
+            elif m_idx in [2, 3]:
+                expected_type = "IMAGINARY"
+            elif m_idx in [4, 5]:
+                expected_type = "REAL"
+            elif m_idx in [6, 7]:
+                expected_type = "IMAGINARY"
         
         actual = "REAL" if is_real else ("IMAGINARY" if is_imag else "COMPLEX")
-        print(f"{orbital_name}-orbital m={m}: {actual}")
+        status = "✓" if actual == expected_type else "✗"
+        
+        print(f"{status} {orbital_name}-orbital {m_name} (m_idx={m_idx}): {actual} (expected: {expected_type})")
+        
+        if actual != expected_type:
+            issues.append(f"{orbital_name}-orbital {m_name}: Expected {expected_type}, got {actual}")
     
     if issues:
-        print("\n⚠️  POTENTIAL SIGN ISSUES DETECTED:")
-        for issue in issues:
-            print(f"  - {issue}")
+        print(f"\n⚠️  {len(issues)} POTENTIAL SIGN ISSUES DETECTED")
     else:
         print("\n✓ All sign patterns match expectations")
 
