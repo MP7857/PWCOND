@@ -401,6 +401,106 @@ For f-orbital (lb=3):
     else:
         print("\n✓ All sign patterns match expectations")
 
+def find_anomalies(data, threshold=1e-10):
+    """Find specific grid points with anomalous values in the 'wrong' component.
+    
+    For REAL orbitals, finds entries with large imaginary parts.
+    For IMAGINARY orbitals, finds entries with large real parts.
+    """
+    print("\n" + "="*60)
+    print("ANOMALY DETECTION")
+    print("="*60)
+    print(f"Threshold for 'anomalous': |value| > {threshold:.0e}")
+    
+    # Expected types based on orbital and m_idx
+    expected_types = {
+        (0, 1): 'REAL',    # s-orbital m=0
+        (1, 1): 'REAL',    # p-orbital pz
+        (1, 2): 'IMAGINARY',  # p-orbital px
+        (1, 3): 'IMAGINARY',  # p-orbital py
+        (2, 1): 'REAL',    # d-orbital dz²
+        (2, 2): 'IMAGINARY',  # d-orbital dxz
+        (2, 3): 'IMAGINARY',  # d-orbital dyz
+        (2, 4): 'REAL',    # d-orbital dx²-y²
+        (2, 5): 'REAL',    # d-orbital dxy
+        (3, 1): 'REAL',    # f-orbital m=1
+        (3, 2): 'IMAGINARY',  # f-orbital m=2
+        (3, 3): 'IMAGINARY',  # f-orbital m=3
+        (3, 4): 'REAL',    # f-orbital m=4
+        (3, 5): 'REAL',    # f-orbital m=5
+        (3, 6): 'IMAGINARY',  # f-orbital m=6
+        (3, 7): 'IMAGINARY',  # f-orbital m=7
+    }
+    
+    anomalies_by_orbital = defaultdict(list)
+    
+    for d in data:
+        key = (d['lb'], d['m_idx'])
+        expected = expected_types.get(key, 'UNKNOWN')
+        
+        if expected == 'REAL' and abs(d['im_w0']) > threshold:
+            anomalies_by_orbital[key].append({
+                'type': 'unexpected_imaginary',
+                'kz': d['kz'],
+                'ig': d['ig'],
+                'z': d['zsl'],
+                'gn': d['gn'],
+                'value': d['im_w0'],
+                're_w0': d['re_w0']
+            })
+        elif expected == 'IMAGINARY' and abs(d['re_w0']) > threshold:
+            anomalies_by_orbital[key].append({
+                'type': 'unexpected_real',
+                'kz': d['kz'],
+                'ig': d['ig'],
+                'z': d['zsl'],
+                'gn': d['gn'],
+                'value': d['re_w0'],
+                'im_w0': d['im_w0']
+            })
+    
+    total_anomalies = sum(len(v) for v in anomalies_by_orbital.values())
+    print(f"\nTotal anomalies found: {total_anomalies}")
+    
+    if total_anomalies == 0:
+        print("✓ No anomalies detected")
+        return
+    
+    for (lb, m_idx), anomalies in sorted(anomalies_by_orbital.items()):
+        if not anomalies:
+            continue
+            
+        orbital_name = ORBITAL_NAMES.get(lb, f'l={lb}')
+        m_name = get_m_name(lb, m_idx)
+        expected = expected_types.get((lb, m_idx), 'UNKNOWN')
+        
+        print(f"\n{orbital_name}-orbital {m_name} (expected {expected}):")
+        print(f"  {len(anomalies)} anomalous entries")
+        
+        # Find max anomaly
+        max_anomaly = max(anomalies, key=lambda x: abs(x['value']))
+        print(f"  Max anomalous value: {max_anomaly['value']:.6e}")
+        
+        # Show details for top 5 anomalies
+        sorted_anomalies = sorted(anomalies, key=lambda x: abs(x['value']), reverse=True)[:5]
+        print(f"  Top anomalous points:")
+        for a in sorted_anomalies:
+            if a['type'] == 'unexpected_imaginary':
+                print(f"    kz={a['kz']:4d}, ig={a['ig']:5d}, z={a['z']:+.6f}, gn={a['gn']:.6e}: "
+                      f"Im={a['value']:+.6e} (Re={a['re_w0']:+.6e})")
+            else:
+                print(f"    kz={a['kz']:4d}, ig={a['ig']:5d}, z={a['z']:+.6f}, gn={a['gn']:.6e}: "
+                      f"Re={a['value']:+.6e} (Im={a['im_w0']:+.6e})")
+        
+        # Check if anomalies cluster around specific conditions
+        gn_zero = [a for a in anomalies if abs(a['gn']) < 1e-8]
+        z_zero = [a for a in anomalies if abs(a['z']) < 1e-8]
+        
+        if gn_zero:
+            print(f"  ⚠️  {len(gn_zero)} anomalies at gn≈0 (Γ-point)")
+        if z_zero:
+            print(f"  ⚠️  {len(z_zero)} anomalies at z≈0")
+
 def main():
     # Default filename
     filename = 'w0_debug.dat'
@@ -433,6 +533,7 @@ def main():
     analyze_z_dependence(data)
     analyze_g_dependence(data)
     check_expected_signs(data)
+    find_anomalies(data)
     
     print("\n" + "="*60)
     print("ANALYSIS COMPLETE")
