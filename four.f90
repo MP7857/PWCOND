@@ -179,7 +179,7 @@ implicit none
             
             if(iz.eq.1) then
                ! At first mesh point: use local value with J_0(0)=1
-               if (abs(zsl(kz)) .gt. 1.d-8) then
+               if (abs(zsl(kz)) .gt. eps) then
                   x5(iz-1) = betar(iz) / abs(zsl(kz))**3
                else
                   x5(iz-1) = 0.d0
@@ -187,7 +187,7 @@ implicit none
             else
                ! Use quadratic extrapolation for better accuracy at high ewind
                ! This reduces error from O(h^2) to O(h^3)
-               if (iz .gt. 2 .and. abs(zsl(kz)) .gt. 1.d-8) then
+               if (iz .gt. 2 .and. abs(zsl(kz)) .gt. eps) then
                   ! Quadratic extrapolation using three points
                   betar_extrap = betar(iz) + (betar(iz)-betar(iz-1))/dr * &
                                  (abs(zsl(kz))-r(iz)) + &
@@ -196,7 +196,7 @@ implicit none
                   x5(iz-1) = betar_extrap / abs(zsl(kz))**3
                else
                   ! Fall back to linear extrapolation
-                  if (abs(zsl(kz)) .gt. 1.d-8) then
+                  if (abs(zsl(kz)) .gt. eps) then
                      x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3)
                   else
                      x5(iz-1) = 0.d0
