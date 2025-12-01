@@ -49,7 +49,7 @@ implicit none
   complex(DP), parameter :: cim=(0.d0, 1.d0)
   real(DP) :: gn, s1, s2, s3, s4, cs, sn, cs2, sn2, cs3, sn3, rz, dz1, zr, &
                    dr, z0, dz,  bessj, taunew(4), r(ndmx),         &
-                   rab(ndmx), betar(ndmx)
+                   rab(ndmx), betar(ndmx), betar_extrap
   real(DP), allocatable :: x1(:), x2(:), x3(:), x4(:), x5(:), x6(:)
   real(DP), allocatable :: fx1(:), fx2(:), fx3(:), fx4(:), fx5(:), fx6(:), zsl(:)
   complex(DP) :: w0(nz1, ngper, 7)
@@ -161,6 +161,10 @@ implicit none
             fx3(kz)=fx3(kz)+(x3(iz-1)+x3(iz))*0.5d0*zr
             fx4(kz)=fx4(kz)+(x4(iz-1)+x4(iz))*0.5d0*zr
          elseif (lb.eq.3) then
+            ! f-orbital integration with improved m=0 endpoint treatment
+            ! x1-x4 contain J_m>0 which vanishes at rz=0, endpoint is benign
+            ! x5, x6 contain J_0 where J_0(0)=1, requires special care
+            
             fx2(kz)=fx2(kz)+x2(iz)*0.5d0*zr
             call simpson(nmeshs-iz+1,x3(iz),rab(iz),fx3(kz))
             fx3(kz)=fx3(kz)+x3(iz)*0.5d0*zr
@@ -168,12 +172,41 @@ implicit none
             fx4(kz)=fx4(kz)+x4(iz)*0.5d0*zr
             call simpson(nmeshs-iz+1,x5(iz),rab(iz),fx5(kz))
             call simpson(nmeshs-iz+1,x6(iz),rab(iz),fx6(kz))
+            
+            ! Special treatment for m=0 integrands (x5, x6)
+            ! x5 contains J_0(gn*rz)/r^3 where J_0(0) = 1
+            ! x6 contains J_0(gn*rz)*rz^2/r^3, vanishes at rz=0
+            
             if(iz.eq.1) then
-               x5(iz-1)=0.d0
+               ! At first mesh point: use local value with J_0(0)=1
+               if (abs(zsl(kz)) .gt. 1.d-8) then
+                  x5(iz-1) = betar(iz) / abs(zsl(kz))**3
+               else
+                  x5(iz-1) = 0.d0
+               endif
             else
-               x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3)
+               ! Use quadratic extrapolation for better accuracy at high ewind
+               ! This reduces error from O(h^2) to O(h^3)
+               if (iz .gt. 2 .and. abs(zsl(kz)) .gt. 1.d-8) then
+                  ! Quadratic extrapolation using three points
+                  betar_extrap = betar(iz) + (betar(iz)-betar(iz-1))/dr * &
+                                 (abs(zsl(kz))-r(iz)) + &
+                                 0.5d0*((betar(iz)-2.d0*betar(iz-1)+betar(iz-2))/dr**2) * &
+                                 (abs(zsl(kz))-r(iz))**2
+                  x5(iz-1) = betar_extrap / abs(zsl(kz))**3
+               else
+                  ! Fall back to linear extrapolation
+                  if (abs(zsl(kz)) .gt. 1.d-8) then
+                     x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3)
+                  else
+                     x5(iz-1) = 0.d0
+                  endif
+               endif
             endif
+            
+            ! x6: rz^2/r^3 term vanishes at r -> |z| (rz -> 0)
             x6(iz-1)=0.d0
+            
             fx5(kz)=fx5(kz)+(x5(iz-1)+x5(iz))*0.5d0*zr
             fx6(kz)=fx6(kz)+(x6(iz-1)+x6(iz))*0.5d0*zr
          endif
