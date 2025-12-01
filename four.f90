@@ -308,6 +308,48 @@ implicit none
     enddo
   enddo
 
+  ! Debug output: save w0 values with identifying information (lb, z, g, m)
+  open(unit=99, file='w0_debug.dat', status='unknown', position='append')
+  write(99,'(A)') '# =============================================='
+  write(99,'(A,I2,A)') '# Orbital lb = ', lb, ' (0=s, 1=p, 2=d, 3=f)'
+  write(99,'(A,F12.6)') '# z0 = ', z0
+  write(99,'(A,F12.6)') '# dz = ', dz
+  write(99,'(A)') '# Format: kz, ig, m, zsl(kz), gn, Re(w0), Im(w0)'
+  write(99,'(A)') '# ----------------------------------------------'
+  do ig=1, ngper
+    ! Get the g-vector magnitude for this ig
+    do ign=1, ngpsh
+      if (ig .le. sum(ninsh(1:ign))) then
+        gn = gnsh(ign)
+        exit
+      endif
+    enddo
+    do kz=1, nz1
+      if (lb.eq.0) then
+        write(99,'(I4,I6,I2,2E16.8,2E20.12)') kz, ig, 1, zsl(kz), gn, &
+              real(w0(kz,ig,1)), aimag(w0(kz,ig,1))
+      elseif (lb.eq.1) then
+        do ir=1, 3
+          write(99,'(I4,I6,I2,2E16.8,2E20.12)') kz, ig, ir, zsl(kz), gn, &
+                real(w0(kz,ig,ir)), aimag(w0(kz,ig,ir))
+        enddo
+      elseif (lb.eq.2) then
+        do ir=1, 5
+          write(99,'(I4,I6,I2,2E16.8,2E20.12)') kz, ig, ir, zsl(kz), gn, &
+                real(w0(kz,ig,ir)), aimag(w0(kz,ig,ir))
+        enddo
+      elseif (lb.eq.3) then
+        do ir=1, 7
+          write(99,'(I4,I6,I2,2E16.8,2E20.12)') kz, ig, ir, zsl(kz), gn, &
+                real(w0(kz,ig,ir)), aimag(w0(kz,ig,ir))
+        enddo
+      endif
+    enddo
+  enddo
+  write(99,'(A)') '# End of orbital data'
+  write(99,'(A)') ''
+  close(99)
+
   deallocate(x1)
   deallocate(x2)
   deallocate(x3)
