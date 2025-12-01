@@ -69,19 +69,21 @@ def parse_w0_debug(filename):
             elif line.startswith('#'):
                 continue
             else:
-                # Parse data line: kz, ig, m, zsl, gn, Re(w0), Im(w0)
+                # Parse data line using fixed-width column format from Fortran
+                # Format: I4, I6, I2, E16.8, E16.8, E20.12, E20.12
                 # Handle Fortran exponential format (D instead of E)
                 line = line.replace('D', 'E').replace('d', 'e')
                 try:
-                    parts = line.split()
-                    if len(parts) >= 7 and current_orbital is not None:
-                        kz = int(parts[0])
-                        ig = int(parts[1])
-                        m_idx = int(parts[2])
-                        zsl = float(parts[3])
-                        gn = float(parts[4])
-                        re_w0 = float(parts[5])
-                        im_w0 = float(parts[6])
+                    # Fixed-width parsing based on Fortran format
+                    # Columns: kz(1-4), ig(5-10), m(11-12), zsl(13-28), gn(29-44), Re(45-64), Im(65-84)
+                    if len(line) >= 64 and current_orbital is not None:
+                        kz = int(line[0:4].strip())
+                        ig = int(line[4:10].strip())
+                        m_idx = int(line[10:12].strip())
+                        zsl = float(line[12:28].strip())
+                        gn = float(line[28:44].strip())
+                        re_w0 = float(line[44:64].strip())
+                        im_w0 = float(line[64:84].strip()) if len(line) >= 84 else 0.0
                         
                         # Validate m_idx is within expected range for this orbital
                         max_m = M_COUNT.get(current_orbital, 7)
