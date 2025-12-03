@@ -48,7 +48,7 @@ implicit none
   real(DP), parameter :: eps=1.d-8
   complex(DP), parameter :: cim=(0.d0, 1.d0)
   real(DP) :: gn, s1, s2, s3, s4, cs, sn, cs2, sn2, cs3, sn3, rz, dz1, zr, &
-                   dr, z0, dz,  bessj, taunew(4), r(ndmx),         &
+                   dr, dr1, z0, dz,  bessj, taunew(4), r(ndmx),         &
                    rab(ndmx), betar(ndmx)
   real(DP), allocatable :: x1(:), x2(:), x3(:), x4(:), x5(:), x6(:)
   real(DP), allocatable :: fx1(:), fx2(:), fx3(:), fx4(:), fx5(:), fx6(:), zsl(:)
@@ -161,21 +161,66 @@ implicit none
             fx3(kz)=fx3(kz)+(x3(iz-1)+x3(iz))*0.5d0*zr
             fx4(kz)=fx4(kz)+(x4(iz-1)+x4(iz))*0.5d0*zr
          elseif (lb.eq.3) then
-            fx2(kz)=fx2(kz)+x2(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x3(iz),rab(iz),fx3(kz))
-            fx3(kz)=fx3(kz)+x3(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x4(iz),rab(iz),fx4(kz))
-            fx4(kz)=fx4(kz)+x4(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x5(iz),rab(iz),fx5(kz))
-            call simpson(nmeshs-iz+1,x6(iz),rab(iz),fx6(kz))
-            if(iz.eq.1) then
-               x5(iz-1)=0.d0
+            ! Integrate from r(iz) to r(nmeshs) using Simpson
+            call simpson(nmeshs-iz+1, x2(iz), rab(iz), fx2(kz))
+            call simpson(nmeshs-iz+1, x3(iz), rab(iz), fx3(kz))
+            call simpson(nmeshs-iz+1, x4(iz), rab(iz), fx4(kz))
+            call simpson(nmeshs-iz+1, x5(iz), rab(iz), fx5(kz))
+            call simpson(nmeshs-iz+1, x6(iz), rab(iz), fx6(kz))
+
+            ! Now treat the segment [|z|, r(iz)].
+            ! We need integrand values at r = |z| ("lower endpoint").
+
+            if (iz.eq.1) then
+               ! No r(iz-1) available: use forward linear extrapolation
+               if (nmeshs.gt.iz+1) then
+                  dr1 = r(2) - r(1)
+
+                  ! extrapolate integrands at r = |z|
+                  x3(0) = x3(1) - (x3(2) - x3(1)) * zr / dr1
+                  x5(0) = x5(1) - (x5(2) - x5(1)) * zr / dr1
+               else
+                  ! fallback: assume nearly constant integrand
+                  x3(0) = x3(1)
+                  x5(0) = x5(1)
+               endif
+
+               ! channels with extra rz vanish at boundary
+               x2(0) = 0.d0
+               x4(0) = 0.d0
+               x6(0) = 0.d0
+
+               ! trapezoids from |z| to r(1); width = zr
+               fx2(kz) = fx2(kz) + (x2(0) + x2(1)) * 0.5d0 * zr
+               fx3(kz) = fx3(kz) + (x3(0) + x3(1)) * 0.5d0 * zr
+               fx4(kz) = fx4(kz) + (x4(0) + x4(1)) * 0.5d0 * zr
+               fx5(kz) = fx5(kz) + (x5(0) + x5(1)) * 0.5d0 * zr
+               fx6(kz) = fx6(kz) + (x6(0) + x6(1)) * 0.5d0 * zr
+
             else
-               x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3)
+               ! iz > 1: we have r(iz-1) and r(iz); use linear interpolation
+               ! r(iz) - r(|z|) = zr, dr = r(iz) - r(iz-1) from above
+
+               ! IMPORTANT: at this point x3(iz-1), x5(iz-1) still contain
+               ! the values used in Simpson. We now overwrite them with
+               ! the integrand at r = |z| (using same index iz-1 as scratch).
+
+               x3(iz-1) = x3(iz) - (x3(iz) - x3(iz-1)) * zr / dr
+               x5(iz-1) = x5(iz) - (x5(iz) - x5(iz-1)) * zr / dr
+
+               ! channels with extra rz vanish at boundary
+               x2(iz-1) = 0.d0
+               x4(iz-1) = 0.d0
+               x6(iz-1) = 0.d0
+
+               ! trapezoids from |z| to r(iz)
+               fx2(kz) = fx2(kz) + (x2(iz-1) + x2(iz)) * 0.5d0 * zr
+               fx3(kz) = fx3(kz) + (x3(iz-1) + x3(iz)) * 0.5d0 * zr
+               fx4(kz) = fx4(kz) + (x4(iz-1) + x4(iz)) * 0.5d0 * zr
+               fx5(kz) = fx5(kz) + (x5(iz-1) + x5(iz)) * 0.5d0 * zr
+               fx6(kz) = fx6(kz) + (x6(iz-1) + x6(iz)) * 0.5d0 * zr
+
             endif
-            x6(iz-1)=0.d0
-            fx5(kz)=fx5(kz)+(x5(iz-1)+x5(iz))*0.5d0*zr
-            fx6(kz)=fx6(kz)+(x6(iz-1)+x6(iz))*0.5d0*zr
          endif
        else
           fx1(kz)=0.d0
