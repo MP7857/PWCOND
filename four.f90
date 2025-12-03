@@ -173,7 +173,7 @@ implicit none
 
             if (iz.eq.1) then
                ! No r(iz-1) available: use forward linear extrapolation
-               if (nmeshs.gt.iz) then
+               if (nmeshs.gt.iz+1) then
                   dr1 = r(2) - r(1)
 
                   ! extrapolate integrands at r = |z| using linear extrapolation
