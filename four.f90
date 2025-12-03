@@ -173,10 +173,11 @@ implicit none
 
             if (iz.eq.1) then
                ! No r(iz-1) available: use forward linear extrapolation
-               if (nmeshs.gt.iz+1) then
+               if (nmeshs.gt.iz) then
                   dr1 = r(2) - r(1)
 
-                  ! extrapolate integrands at r = |z|
+                  ! extrapolate integrands at r = |z| using linear extrapolation
+                  ! This is valid for the singular 1/r^3 channels x3 and x5
                   x3(0) = x3(1) - (x3(2) - x3(1)) * zr / dr1
                   x5(0) = x5(1) - (x5(2) - x5(1)) * zr / dr1
                else
