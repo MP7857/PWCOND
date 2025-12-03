@@ -161,20 +161,6 @@ implicit none
             fx3(kz)=fx3(kz)+(x3(iz-1)+x3(iz))*0.5d0*zr
             fx4(kz)=fx4(kz)+(x4(iz-1)+x4(iz))*0.5d0*zr
          elseif (lb.eq.3) then
-! DESIGN NOTE for lb = 3 (f-orbitals):
-! - x1..x6 are integrands over r with r^(-3) and rz powers.
-! - Only x5 behaves as ~ 1 / r^3 at the inner limit; x1,x2,x3,x4,x6 all vanish as rz -> 0.
-! - We must NOT reconstruct x5 at the boundary using betar / abs(zsl(kz))**3.
-!   That introduces explicit 1/|z|^3 and causes strong nz1 dependence.
-! - Instead, we:
-!   * Keep all Simpson calls and existing half-segment corrections as in the original QE code.
-!   * For x5, we approximate the integrand at r = |z| by linear interpolation in r:
-!       - if iz == 1: set x5(0) = 0.d0 (no r(0) in radial grid; original safe behaviour).
-!       - if iz > 1: x5(iz-1) = x5(iz) - (x5(iz) - x5(iz-1)) * zr / dr.
-!   * For x6, which carries an extra rz^2 factor, we enforce x6(iz-1) = 0.d0.
-!   * x1,x2,x3,x4 are kept exactly as in the original implementation; no special boundary value
-!     is needed beyond the existing Simpson + 0.5*zr corrections.
-! - The combination of fx* into w0(kz,ig,1..7) and the s1..s4 normalization stays unchanged.
             fx2(kz)=fx2(kz)+x2(iz)*0.5d0*zr
             call simpson(nmeshs-iz+1,x3(iz),rab(iz),fx3(kz))
             fx3(kz)=fx3(kz)+x3(iz)*0.5d0*zr
