@@ -202,8 +202,8 @@ def test_fx5_integration():
     print("=" * 60)
     
     for z, gn in test_cases:
-        result_fortran = fortran_like_f_x5(r_grid, z, gn)
-        result_ref = reference_f_x5(r_grid, z, gn)
+        result_fortran = float(fortran_like_f_x5(r_grid, z, gn))
+        result_ref = float(reference_f_x5(r_grid, z, gn))
         
         rel_error = abs(result_fortran - result_ref) / abs(result_ref) if result_ref != 0 else 0
         
