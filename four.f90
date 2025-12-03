@@ -50,8 +50,13 @@ implicit none
   real(DP) :: gn, s1, s2, s3, s4, cs, sn, cs2, sn2, cs3, sn3, rz, dz1, zr, &
                    dr, z0, dz,  bessj, taunew(4), r(ndmx),         &
                    rab(ndmx), betar(ndmx)
-  ! Workspace for improved FX5 endpoint
-  real(DP) :: r0, r1, rmid, beta0, betamid, x5_0, x5_mid, x5_1, zrmid, rz_mid, I_end
+
+  ! Workspace for improved FX5 endpoint treatment
+  real(DP) :: r0, r1, rmid
+  real(DP) :: beta0, betamid
+  real(DP) :: x5_0, x5_mid, x5_1
+  real(DP) :: zrmid, rz_mid, I_end
+
   real(DP), allocatable :: x1(:), x2(:), x3(:), x4(:), x5(:), x6(:)
   real(DP), allocatable :: fx1(:), fx2(:), fx3(:), fx4(:), fx5(:), fx6(:), zsl(:)
   complex(DP) :: w0(nz1, ngper, 7)
@@ -169,53 +174,51 @@ implicit none
             call simpson(nmeshs-iz+1,x4(iz),rab(iz),fx4(kz))
             fx4(kz)=fx4(kz)+x4(iz)*0.5d0*zr
 
-            ! Main Simpson part for FX5/FX6 (from r(iz) to rmax)
+            ! Main Simpson part (r(iz) to rmax)
             call simpson(nmeshs-iz+1,x5(iz),rab(iz),fx5(kz))
             call simpson(nmeshs-iz+1,x6(iz),rab(iz),fx6(kz))
 
-            ! -------------------------------------------------
-            ! Improved endpoint treatment for FX5 on [|z|, r(iz)]
-            ! -------------------------------------------------
-            r0   = abs(zsl(kz))      ! lower limit |z|
-            r1   = r(iz)             ! first radial grid point > |z|
-            rmid = 0.5d0*(r0 + r1)   ! midpoint of the segment
+            ! ============================================================
+            ! Improved FX5 endpoint: 3-point Simpson over [|z|, r(iz)]
+            ! ============================================================
+            r0   = abs(zsl(kz))
+            r1   = r(iz)
+            rmid = 0.5d0*(r0 + r1)
 
             if (iz.gt.1) then
-               ! Linear beta between r(iz-1) and r(iz)
-               beta0   = betar(iz) - (betar(iz) - betar(iz-1)) * zr / dr
+               beta0   = betar(iz) - (betar(iz)-betar(iz-1)) * zr/dr
                zrmid   = r1 - rmid
-               betamid = betar(iz) - (betar(iz) - betar(iz-1)) * zrmid / dr
+               betamid = betar(iz) - (betar(iz)-betar(iz-1)) * zrmid/dr
             else
-               ! If no previous point is available, assume locally constant beta
                beta0   = betar(iz)
                betamid = betar(iz)
             endif
 
-            ! Value at r0 = |z| (here J0(0) = 1)
+            ! x5 at r0 = |z| (J0 = 1)
             if (r0.gt.eps) then
-               x5_0   = beta0   / (r0**3)
+               x5_0 = beta0 / (r0**3)
             else
-               x5_0   = 0.d0
+               x5_0 = 0.d0
             endif
 
-            ! Value at midpoint rmid, including J0 at the midpoint
+            ! x5 at midpoint
             if (rmid.gt.eps) then
-               rz_mid = sqrt( max( rmid*rmid - zsl(kz)*zsl(kz), 0.d0 ) )
+               rz_mid = sqrt(max(rmid*rmid - zsl(kz)*zsl(kz), 0.d0))
                x5_mid = betamid * bessj(0, gn*rz_mid) / (rmid**3)
             else
                x5_mid = 0.d0
             endif
 
-            ! Value at r1 already in x5(iz) (includes J0 at r1)
+            ! x5 at r1
             x5_1 = x5(iz)
 
-            ! 3-point Simpson rule over [r0, r1]
+            ! Simpson endpoint
             I_end   = (x5_0 + 4.d0*x5_mid + x5_1) * zr / 6.d0
             fx5(kz) = fx5(kz) + I_end
 
-            ! FX6 endpoint kept simple (integrand much less singular)
-            x6(iz-1) = 0.d0
-            fx6(kz)  = fx6(kz) + (x6(iz-1)+x6(iz))*0.5d0*zr
+            ! FX6 endpoint (low sensitivity)
+            x6(iz-1)=0.d0
+            fx6(kz) = fx6(kz) + (x6(iz-1)+x6(iz))*0.5d0*zr
          endif
        else
           fx1(kz)=0.d0
