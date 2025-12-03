@@ -134,7 +134,9 @@ implicit none
             fx1(kz)=fx1(kz)+(x1(iz-1)+x1(iz))*0.5d0*zr
          else
             fx1(kz)=fx1(kz)+x1(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x2(iz),rab(iz),fx2(kz))
+            if (lb.ne.3) then
+               call simpson(nmeshs-iz+1,x2(iz),rab(iz),fx2(kz))
+            endif
          endif
          if (lb.eq.1) then
             if(iz.eq.1) then
