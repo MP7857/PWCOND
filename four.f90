@@ -23,8 +23,8 @@ subroutine four(w0, z0, dz, tblm, taunew, r, rab, betar)
 !             s ;
 !             p_z, p_{-x}, p_{-y} ;
 !             d_{z^2-1}, d_{-xz}, d_{-yz}, d_{x^2-y^2}, d_{xy}
-!             f_{z(5z^2-3r^2)}, f_{x(5z^2-r^2)}, f_{-y(5z^2-r^2)},
-!             f_{z(x^2-y^2)}, f_{-xyz}, f_{x(x^2-3y^2)}, f_{-y(3x^2-y^2)}
+!             f_{z(5z^2-3r^2)}, f_{-x(5z^2-r^2)}, f_{-y(5z^2-r^2)},
+!             f_{z(x^2-y^2)}, f_{xyz}, f_{-x(x^2-3y^2)}, f_{-y(3x^2-y^2)}
 !
 ! input:  tblm   -  array characterizing the orbital.
 !         taunew -  coordinates and radius of the orbital.
