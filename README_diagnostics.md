@@ -9,6 +9,8 @@ When running pwcond with the diagnostic code enabled, the following files are pr
 ### `w0_norms.dat`
 Compact file with global norms per (l,m) channel:
 - **Format**: `nz1  lb  m  norm`
+  - `lb` = l-quantum number (orbital angular momentum: 0=s, 1=p, 2=d, 3=f)
+  - `m` = m-quantum number (magnetic quantum number, stored as m-1 for 0-based indexing)
 - **Content**: Sum of |w0(kz,ig,m)|² over all kz,ig for each projector call
 - **Purpose**: Track how total norm changes with nz1
 

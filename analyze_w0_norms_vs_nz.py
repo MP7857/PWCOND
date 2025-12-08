@@ -64,8 +64,13 @@ if __name__ == "__main__":
             sorted_vals = sorted(vals)
             ref_norm = sorted_vals[0][2]
             for i, (nz_label, nz1, norm) in enumerate(sorted_vals[1:], 1):
-                rel_change = abs(norm - ref_norm) / ref_norm * 100 if ref_norm > 0 else 0
-                print(f"       -> relative change from first: {rel_change:6.2f}%")
+                if ref_norm > 1e-15:
+                    rel_change = abs(norm - ref_norm) / ref_norm * 100
+                    print(f"       -> relative change from first: {rel_change:6.2f}%")
+                elif abs(norm) > 1e-15:
+                    print(f"       -> relative change from first: undefined (ref_norm~0, norm={norm:.3e})")
+                else:
+                    print(f"       -> relative change from first: both norms ~0")
         print()
 
     print("\nSummary:")

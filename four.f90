@@ -306,6 +306,7 @@ subroutine accumulate_w0_norms( w0, lb, nz1, ngper )
   !
   ! Accumulate ||w0||^2 over all (kz,ig) for each m-channel of this projector.
   ! Appends one line per (l,m) for each call of four().
+  ! Input: lb = l-quantum number (orbital angular momentum: 0=s, 1=p, 2=d, 3=f)
   !
   use kinds,     only : dp
   use io_global, only : ionode
@@ -314,7 +315,8 @@ subroutine accumulate_w0_norms( w0, lb, nz1, ngper )
   integer, intent(in) :: lb, nz1, ngper
   complex(dp), intent(in) :: w0(nz1,ngper,7)
 
-  integer :: m, nm, kz, ig, u
+  integer :: m, nm, kz, ig
+  integer, parameter :: u = 320  ! file unit for w0_norms.dat
   real(dp) :: norm_m
   logical, save :: first = .true.
 
@@ -332,8 +334,6 @@ subroutine accumulate_w0_norms( w0, lb, nz1, ngper )
   case default
      return
   end select
-
-  u = 320
 
   if ( first ) then
      open( unit = u, file = 'w0_norms.dat', status = 'replace', action = 'write' )
@@ -364,6 +364,7 @@ subroutine write_w0_full( w0, lb, nz1, ngper )
   !
   ! Optional: write full w0(kz,ig,m) arrays for detailed analysis.
   ! Enable by uncommenting the call in subroutine four.
+  ! Input: lb = l-quantum number (orbital angular momentum: 0=s, 1=p, 2=d, 3=f)
   !
   use kinds,     only : dp
   use io_global, only : ionode
@@ -372,7 +373,8 @@ subroutine write_w0_full( w0, lb, nz1, ngper )
   integer, intent(in) :: lb, nz1, ngper
   complex(dp), intent(in) :: w0(nz1,ngper,7)
 
-  integer :: kz, ig, m, nm, u
+  integer :: kz, ig, m, nm
+  integer, parameter :: u = 321  ! file unit for w0_full.dat
   logical, save :: first = .true.
 
   if ( .not. ionode ) return
@@ -389,8 +391,6 @@ subroutine write_w0_full( w0, lb, nz1, ngper )
   case default
      return
   end select
-
-  u = 321
 
   if ( first ) then
      open( unit = u, file = 'w0_full.dat', status = 'replace', action = 'write' )
