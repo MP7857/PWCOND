@@ -8,6 +8,10 @@
 ! Modified by M. Pourfath (2025)
 ! Extended to include f-orbital (l = 3) calculations.
 !
+! NOTE (2025-12): Radial and angular parts in four.f90 are considered correct.
+! z-integration stability (nz-dependence) is handled in pwcond by Simpson
+! weights in the z-summation. Do not modify this routine for nz-issues.
+!
 subroutine four(w0, z0, dz, tblm, taunew, r, rab, betar)
 !
 ! This routine computes the bidimensional fourier transform of the

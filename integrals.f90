@@ -21,6 +21,7 @@ function int1d(fun, zk, dz, dz1, nz1, tpiba, sign)
       sign             ! input: the sign of the exponential
   real(DP), parameter :: eps=1.d-8
   real(DP) :: tpi, dz, dz1, tpiba
+  real(DP), allocatable :: wz(:)
   complex(DP), parameter :: cim = (0.d0,1.d0)
   complex(DP) ::  &
       zk,              & ! the exponential k
@@ -31,20 +32,26 @@ function int1d(fun, zk, dz, dz1, nz1, tpiba, sign)
 
   tpi = 8.d0*atan(1.d0)
 
+  ! Allocate and compute Simpson weights
+  allocate( wz(nz1) )
+  call z_simpson_weights( nz1, wz )
+
   int1d = (0.d0,0.d0)
   arg = sign*tpi*cim*zk*dz1
   fact0=exp(arg)
   fact=fact0
   do ik=1, nz1
-    int1d = int1d+CONJG(fun(ik))*fact
+    int1d = int1d+CONJG(fun(ik))*fact*wz(ik)
     fact=fact*fact0
   enddo
   if (abs(DBLE(zk))+abs(AIMAG(zk)).gt.eps) then
-    int1d =-sign*cim*int1d*(1.d0-exp(-arg))/(zk*tpiba)
+    int1d =-sign*cim*int1d*(1.d0-exp(-arg))/(zk*tpiba) / 3.d0
     if (sign.lt.0) int1d=int1d*exp(tpi*cim*zk*dz)
   else
-    int1d = int1d*dz1/tpiba*tpi
+    int1d = int1d*dz1/tpiba*tpi / 3.d0
   endif
+
+  deallocate( wz )
 
   return
 end function int1d
@@ -63,6 +70,7 @@ function int2d(fun1, fun2, int1, int2, fact1, fact2, zk, dz1, tpiba, nz1 )
      ik       ! counters on the slab points
   real(DP), parameter :: eps=1.d-8
   real(DP) :: dz1, tpiba
+  real(DP), allocatable :: wz(:)
   complex(DP), parameter :: cim=(0.d0,1.d0), one=(1.d0,0.d0)
   complex(DP) ::       &
      fun1(nz1), fun2(nz1),  &  ! the two arrays to be integrated
@@ -72,6 +80,10 @@ function int2d(fun1, fun2, int1, int2, fact1, fact2, zk, dz1, tpiba, nz1 )
      fact,fact0,            &  ! auxiliary
      f1, f2, zk,            &  ! the complex k of the exponent
      int2d                     ! output: the result of the integration
+
+  ! Allocate and compute Simpson weights
+  allocate( wz(nz1) )
+  call z_simpson_weights( nz1, wz )
 
   s1=(0.d0,0.d0)
   s2=(0.d0,0.d0)
@@ -83,9 +95,9 @@ function int2d(fun1, fun2, int1, int2, fact1, fact2, zk, dz1, tpiba, nz1 )
   fact0=fact2(1)
   do ik=1, nz1
     ff=CONJG(fun1(ik))
-    s1=s1+int1(ik)*ff*fact1(ik)
-    s2=s2+int2(ik)*ff*fact2(ik)
-    s3=s3+fun2(ik)*ff
+    s1=s1+int1(ik)*ff*fact1(ik)*wz(ik)
+    s2=s2+int2(ik)*ff*fact2(ik)*wz(ik)
+    s3=s3+fun2(ik)*ff*wz(ik)
   enddo
 !
 ! complete integral
@@ -93,10 +105,12 @@ function int2d(fun1, fun2, int1, int2, fact1, fact2, zk, dz1, tpiba, nz1 )
   f1=cim*zk*dz1*tpi
   f2=one/(zk*tpiba)**2
   if (abs(f1).gt.eps) then
-     int2d=((1.d0-fact+f1)*s3*2.d0+(2.d0-fact-fact0)*(s1+s2))*f2
+     int2d=((1.d0-fact+f1)*s3*2.d0+(2.d0-fact-fact0)*(s1+s2))*f2 / 3.d0
   else
-     int2d=(s1+s2+s3)*(dz1*tpi/tpiba)**2
+     int2d=(s1+s2+s3)*(dz1*tpi/tpiba)**2 / 3.d0
   endif
+
+  deallocate( wz )
 
   return
 end function int2d
@@ -124,3 +138,45 @@ subroutine setint(fun,int1,int2,fact1,fact2,nz1)
 
   return
 end subroutine setint
+
+!> Build Simpson (or trapezoidal) weights for integration over z-slices.
+!! Input:
+!!   nz1 : number of z-slices
+!! Output:
+!!   w(kz), kz = 1..nz1
+!! Such that sum_k w(kz) * f(kz) ≈ ∫ f(z) dz  (up to an overall Δz factor).
+subroutine z_simpson_weights( nz1, w )
+  use kinds, only : dp
+  implicit none
+  integer,  intent(in)  :: nz1
+  real(dp), intent(out) :: w(nz1)
+  integer :: kz
+
+  ! If nz1 is odd and >= 3, use Simpson's rule.
+  ! Otherwise fall back to trapezoidal rule.
+  if ( nz1 < 3 .or. mod(nz1,2) == 0 ) then
+     if ( nz1 == 1 ) then
+        w(1) = 1.d0
+     else
+        w(1) = 0.5d0
+        do kz = 2, nz1-1
+           w(kz) = 1.d0
+        enddo
+        w(nz1) = 0.5d0
+     endif
+     return
+  endif
+
+  ! Proper Simpson weights: 1, 4, 2, 4, ..., 2, 4, 1
+  w(1) = 1.d0
+  do kz = 2, nz1-1
+     if ( mod(kz,2) == 0 ) then
+        w(kz) = 4.d0
+     else
+        w(kz) = 2.d0
+     endif
+  enddo
+  w(nz1) = 1.d0
+
+  return
+end subroutine z_simpson_weights
