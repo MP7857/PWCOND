@@ -32,7 +32,9 @@ function int1d(fun, zk, dz, dz1, nz1, tpiba, sign)
 
   tpi = 8.d0*atan(1.d0)
 
-  ! Allocate and compute Simpson weights
+  ! Allocate and compute Simpson weights for nz-stable integration
+  ! Original: sum_k f(k), then scale by dz1
+  ! Simpson:  sum_k wz(k)*f(k), then scale by dz1/3
   allocate( wz(nz1) )
   call z_simpson_weights( nz1, wz )
 
@@ -45,9 +47,11 @@ function int1d(fun, zk, dz, dz1, nz1, tpiba, sign)
     fact=fact*fact0
   enddo
   if (abs(DBLE(zk))+abs(AIMAG(zk)).gt.eps) then
+    ! Apply Simpson scaling: dz1/3 instead of dz1
     int1d =-sign*cim*int1d*(1.d0-exp(-arg))/(zk*tpiba) / 3.d0
     if (sign.lt.0) int1d=int1d*exp(tpi*cim*zk*dz)
   else
+    ! Apply Simpson scaling: dz1/3 instead of dz1
     int1d = int1d*dz1/tpiba*tpi / 3.d0
   endif
 
@@ -81,7 +85,9 @@ function int2d(fun1, fun2, int1, int2, fact1, fact2, zk, dz1, tpiba, nz1 )
      f1, f2, zk,            &  ! the complex k of the exponent
      int2d                     ! output: the result of the integration
 
-  ! Allocate and compute Simpson weights
+  ! Allocate and compute Simpson weights for nz-stable integration
+  ! Original: sum_k f(k), then scale by dz1
+  ! Simpson:  sum_k wz(k)*f(k), then scale by dz1/3
   allocate( wz(nz1) )
   call z_simpson_weights( nz1, wz )
 
@@ -105,8 +111,10 @@ function int2d(fun1, fun2, int1, int2, fact1, fact2, zk, dz1, tpiba, nz1 )
   f1=cim*zk*dz1*tpi
   f2=one/(zk*tpiba)**2
   if (abs(f1).gt.eps) then
+     ! Apply Simpson scaling: dz1/3 instead of dz1
      int2d=((1.d0-fact+f1)*s3*2.d0+(2.d0-fact-fact0)*(s1+s2))*f2 / 3.d0
   else
+     ! Apply Simpson scaling: dz1/3 instead of dz1
      int2d=(s1+s2+s3)*(dz1*tpi/tpiba)**2 / 3.d0
   endif
 
@@ -146,10 +154,10 @@ end subroutine setint
 !!   w(kz), kz = 1..nz1
 !! Such that sum_k w(kz) * f(kz) ≈ ∫ f(z) dz  (up to an overall Δz factor).
 subroutine z_simpson_weights( nz1, w )
-  use kinds, only : dp
+  USE kinds, only : DP
   implicit none
   integer,  intent(in)  :: nz1
-  real(dp), intent(out) :: w(nz1)
+  real(DP), intent(out) :: w(nz1)
   integer :: kz
 
   ! If nz1 is odd and >= 3, use Simpson's rule.
