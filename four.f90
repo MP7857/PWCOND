@@ -305,12 +305,13 @@ subroutine write_fx_full(lb, kz, ig, ign, f1, f2, f3, f4, f5, f6, f7)
   implicit none
   integer, intent(in) :: lb, kz, ig, ign
   real(dp), intent(in) :: f1, f2, f3, f4, f5, f6, f7
+  integer, parameter :: fx_unit = 333  ! Unit for fx_full.dat diagnostic output
   integer :: u
   logical, save :: first = .true.
 
   if (.not. ionode) return
 
-  u = 333
+  u = fx_unit
 
   if (first) then
     open(unit=u, file='fx_full.dat', status='replace', action='write')
