@@ -203,10 +203,12 @@ implicit none
         do kz=1, nz1
             if (lb.eq.0) then
                w0(kz,ig,1)=fx1(kz)
+               call write_fx_full(lb, kz, ig, ign, fx1(kz), 0.d0, 0.d0, 0.d0, 0.d0, 0.d0, 0.d0)
             elseif (lb.eq.1) then
                w0(kz,ig,2)=cs*fx1(kz)
                w0(kz,ig,1)=fx2(kz)
                w0(kz,ig,3)=sn*fx1(kz)
+               call write_fx_full(lb, kz, ig, ign, fx1(kz), fx2(kz), 0.d0, 0.d0, 0.d0, 0.d0, 0.d0)
             elseif (lb.eq.2) then
                w0(kz,ig,5)=sn2*fx1(kz)
                w0(kz,ig,2)=cs*fx2(kz)
@@ -214,6 +216,7 @@ implicit none
                w0(kz,ig,3)=sn*fx2(kz)
                w0(kz,ig,4)=cs2*fx1(kz)
                wadd(kz,ig)=fx4(kz)
+               call write_fx_full(lb, kz, ig, ign, fx1(kz), fx2(kz), fx3(kz), fx4(kz), 0.d0, 0.d0, 0.d0)
             elseif (lb.eq.3) then
                w0(kz,ig,1)=fx5(kz)
                wadd(kz,ig)=fx6(kz)
@@ -225,6 +228,7 @@ implicit none
                w0(kz,ig,5)=sn2*fx2(kz)
                w0(kz,ig,6)=cs3*fx1(kz)
                w0(kz,ig,7)=sn3*fx1(kz)
+               call write_fx_full(lb, kz, ig, ign, fx1(kz), fx2(kz), fx3(kz), fx4(kz), fx5(kz), fx6(kz), 0.d0)
             endif
         enddo
      enddo
@@ -294,6 +298,31 @@ implicit none
 
   return
 end subroutine four
+
+subroutine write_fx_full(lb, kz, ig, ign, f1, f2, f3, f4, f5, f6, f7)
+  use kinds, only: dp
+  use io_global, only: ionode
+  implicit none
+  integer, intent(in) :: lb, kz, ig, ign
+  real(dp), intent(in) :: f1, f2, f3, f4, f5, f6, f7
+  integer :: u
+  logical, save :: first = .true.
+
+  if (.not. ionode) return
+
+  u = 333
+
+  if (first) then
+    open(unit=u, file='fx_full.dat', status='replace', action='write')
+    write(u,'(a)') '# lb kz ig ign  fx1 fx2 fx3 fx4 fx5 fx6 fx7'
+    first = .false.
+  else
+    open(unit=u, file='fx_full.dat', status='old', position='append')
+  endif
+
+  write(u,'(4i5,7(1x,es20.12))') lb, kz, ig, ign, f1, f2, f3, f4, f5, f6, f7
+  close(u)
+end subroutine write_fx_full
 
 function indexr(zz, ndim, r)
   USE kinds, only : DP
