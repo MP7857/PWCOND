@@ -7,6 +7,13 @@
 !
 ! Optimized Aug. 2004 (ADC)
 !
+! NOTE (2025-12, M.P.):
+!   int1d and int2d now use Simpson-style weights along z (via z_simpson_weights)
+!   to reduce the dependence of matrix elements on the number of slab slices nz1.
+!   We keep the original analytical prefactors (in zk, dz1, tpiba) but replace the
+!   flat sum over k with a Simpson-weighted sum and a global /3 scaling.
+!   setint is left unchanged.
+!
 !
 function int1d(fun, zk, dz, dz1, nz1, tpiba, sign)
 !
