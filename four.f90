@@ -296,8 +296,123 @@ implicit none
   deallocate(wadd2)
   deallocate(wadd3)
 
+  ! Diagnostic: accumulate w0 norms for nz-stability analysis
+  call accumulate_w0_norms( w0, lb, nz1, ngper )
+
   return
 end subroutine four
+
+subroutine accumulate_w0_norms( w0, lb, nz1, ngper )
+  !
+  ! Accumulate ||w0||^2 over all (kz,ig) for each m-channel of this projector.
+  ! Appends one line per (l,m) for each call of four().
+  !
+  use kinds,     only : dp
+  use io_global, only : ionode
+  implicit none
+
+  integer, intent(in) :: lb, nz1, ngper
+  complex(dp), intent(in) :: w0(nz1,ngper,7)
+
+  integer :: m, nm, kz, ig, u
+  real(dp) :: norm_m
+  logical, save :: first = .true.
+
+  if ( .not. ionode ) return
+
+  select case ( lb )
+  case (0)
+     nm = 1
+  case (1)
+     nm = 3
+  case (2)
+     nm = 5
+  case (3)
+     nm = 7
+  case default
+     return
+  end select
+
+  u = 320
+
+  if ( first ) then
+     open( unit = u, file = 'w0_norms.dat', status = 'replace', action = 'write' )
+     write(u,'(a)') '# Per-projector w0 norms over all kz,ig'
+     write(u,'(a)') '# cols: nz1  lb  m  norm'
+     first = .false.
+  else
+     open( unit = u, file = 'w0_norms.dat', status = 'old', position = 'append', action = 'write' )
+  endif
+
+  do m = 1, nm
+     norm_m = 0.d0
+     do kz = 1, nz1
+        do ig = 1, ngper
+           norm_m = norm_m + real( w0(kz,ig,m) )**2 + aimag( w0(kz,ig,m) )**2
+        enddo
+     enddo
+     ! store m-1 in the file so it matches your (l,m) convention in Python
+     write(u,'(3i6,1p,e20.12)') nz1, lb, m-1, norm_m
+  enddo
+
+  flush(u)
+  close(u)
+
+end subroutine accumulate_w0_norms
+
+subroutine write_w0_full( w0, lb, nz1, ngper )
+  !
+  ! Optional: write full w0(kz,ig,m) arrays for detailed analysis.
+  ! Enable by uncommenting the call in subroutine four.
+  !
+  use kinds,     only : dp
+  use io_global, only : ionode
+  implicit none
+
+  integer, intent(in) :: lb, nz1, ngper
+  complex(dp), intent(in) :: w0(nz1,ngper,7)
+
+  integer :: kz, ig, m, nm, u
+  logical, save :: first = .true.
+
+  if ( .not. ionode ) return
+
+  select case ( lb )
+  case (0)
+     nm = 1
+  case (1)
+     nm = 3
+  case (2)
+     nm = 5
+  case (3)
+     nm = 7
+  case default
+     return
+  end select
+
+  u = 321
+
+  if ( first ) then
+     open( unit = u, file = 'w0_full.dat', status = 'replace', action = 'write' )
+     write(u,'(a)') '# Full w0 dump: kz  ig  lb  m  Re  Im'
+     first = .false.
+  else
+     open( unit = u, file = 'w0_full.dat', status = 'old', position = 'append', action = 'write' )
+  endif
+
+  do kz = 1, nz1
+     do ig = 1, ngper
+        do m = 1, nm
+           write(u,'(4i6,2es24.15)') kz, ig, lb, m-1, &
+     &          real( w0(kz,ig,m) ), aimag( w0(kz,ig,m) )
+        enddo
+     enddo
+  enddo
+
+  flush(u)
+  close(u)
+
+end subroutine write_w0_full
 
 function indexr(zz, ndim, r)
   USE kinds, only : DP
