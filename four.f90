@@ -49,7 +49,7 @@ implicit none
   complex(DP), parameter :: cim=(0.d0, 1.d0)
   real(DP) :: gn, s1, s2, s3, s4, cs, sn, cs2, sn2, cs3, sn3, rz, dz1, zr, &
                    dr, z0, dz,  bessj, taunew(4), r(ndmx),         &
-                   rab(ndmx), betar(ndmx)
+                   rab(ndmx), betar(ndmx), fx1w, fx2w, fx3w, fx4w, fx5w, fx6w
   real(DP), allocatable :: x1(:), x2(:), x3(:), x4(:), x5(:), x6(:)
   real(DP), allocatable :: fx1(:), fx2(:), fx3(:), fx4(:), fx5(:), fx6(:), zsl(:)
   complex(DP) :: w0(nz1, ngper, 7)
@@ -161,6 +161,7 @@ implicit none
             fx3(kz)=fx3(kz)+(x3(iz-1)+x3(iz))*0.5d0*zr
             fx4(kz)=fx4(kz)+(x4(iz-1)+x4(iz))*0.5d0*zr
          elseif (lb.eq.3) then
+            ! Integrate r >= r(iz) with Simpson (unchanged)
             fx2(kz)=fx2(kz)+x2(iz)*0.5d0*zr
             call simpson(nmeshs-iz+1,x3(iz),rab(iz),fx3(kz))
             fx3(kz)=fx3(kz)+x3(iz)*0.5d0*zr
@@ -168,14 +169,17 @@ implicit none
             fx4(kz)=fx4(kz)+x4(iz)*0.5d0*zr
             call simpson(nmeshs-iz+1,x5(iz),rab(iz),fx5(kz))
             call simpson(nmeshs-iz+1,x6(iz),rab(iz),fx6(kz))
-            if(iz.eq.1) then
-               x5(iz-1)=0.d0
-            else
-               x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3)
-            endif
-            x6(iz-1)=0.d0
-            fx5(kz)=fx5(kz)+(x5(iz-1)+x5(iz))*0.5d0*zr
-            fx6(kz)=fx6(kz)+(x6(iz-1)+x6(iz))*0.5d0*zr
+
+            ! NEW: more accurate wedge [|z|, r(iz)] for all fx1..fx6
+            call f_wedge_integral_gauss( abs(zsl(kz)), r(iz), gn, nmesh, r, betar, &
+                                         fx1w, fx2w, fx3w, fx4w, fx5w, fx6w )
+
+            fx1(kz) = fx1(kz) + fx1w
+            fx2(kz) = fx2(kz) + fx2w
+            fx3(kz) = fx3(kz) + fx3w
+            fx4(kz) = fx4(kz) + fx4w
+            fx5(kz) = fx5(kz) + fx5w
+            fx6(kz) = fx6(kz) + fx6w
          endif
        else
           fx1(kz)=0.d0
@@ -311,3 +315,156 @@ function indexr(zz, ndim, r)
   indexr=iz
   return
 end function indexr
+
+!-----------------------------------------------------------------------
+! Quadratic interpolation of betar(rq) on the radial grid.
+! Uses three nearby points when possible, otherwise falls back to linear.
+subroutine interp_betar_quad(rq, nmesh, r, betar, bq)
+  USE kinds, only : DP
+  implicit none
+  integer,  intent(in)  :: nmesh
+  real(DP), intent(in)  :: rq, r(nmesh), betar(nmesh)
+  real(DP), intent(out) :: bq
+
+  integer :: i, i1, i2, i3
+  real(DP) :: x1,x2,x3, y1,y2,y3
+  real(DP) :: L1,L2,L3, denom12, denom13, denom23
+
+  ! If outside grid, clamp
+  if (rq <= r(1)) then
+     bq = betar(1)
+     return
+  elseif (rq >= r(nmesh)) then
+     bq = betar(nmesh)
+     return
+  endif
+
+  ! Find interval [i, i+1] such that r(i) <= rq <= r(i+1)
+  i = 1
+  do while (r(i+1) < rq .and. i < nmesh-1)
+     i = i + 1
+  enddo
+
+  ! Choose three points for quadratic interpolation
+  if (i == 1) then
+     i1 = 1;       i2 = 2;       i3 = 3
+  elseif (i == nmesh-1) then
+     i1 = nmesh-2; i2 = nmesh-1; i3 = nmesh
+  else
+     i1 = i-1;     i2 = i;       i3 = i+1
+  endif
+
+  x1 = r(i1); y1 = betar(i1)
+  x2 = r(i2); y2 = betar(i2)
+  x3 = r(i3); y3 = betar(i3)
+
+  denom12 = (x1 - x2)
+  denom13 = (x1 - x3)
+  denom23 = (x2 - x3)
+
+  ! Guard against degeneracy: fall back to linear if needed
+  if (abs(denom12*denom13*denom23) < 1.d-14) then
+     ! simple linear between i and i+1
+     bq = y2 + (y3 - y2) * (rq - x2) / (x3 - x2)
+     return
+  endif
+
+  L1 = (rq - x2)*(rq - x3) / (denom12*denom13)
+  L2 = (rq - x1)*(rq - x3) / ((x2 - x1)*denom23)
+  L3 = (rq - x1)*(rq - x2) / ((x3 - x1)*(x3 - x2))
+
+  bq = y1*L1 + y2*L2 + y3*L3
+
+  return
+end subroutine interp_betar_quad
+
+!-----------------------------------------------------------------------
+! More accurate treatment of the wedge r in [|z|, r_iz] for l=3.
+! Returns contributions to fx1..fx6 from this wedge.
+subroutine f_wedge_integral_gauss( zabs, r_hi, gn, nmesh, r, betar,    &
+                                   fx1w, fx2w, fx3w, fx4w, fx5w, fx6w )
+  USE kinds, only : DP
+  implicit none
+  real(DP), intent(in)  :: zabs, r_hi, gn
+  integer,  intent(in)  :: nmesh
+  real(DP), intent(in)  :: r(nmesh), betar(nmesh)
+  real(DP), intent(out) :: fx1w, fx2w, fx3w, fx4w, fx5w, fx6w
+
+  real(DP), parameter :: eps = 1.d-12
+  real(DP) :: dr, t1, t2, w1, w2, rq, rzq, bj, bessj
+  real(DP) :: x1,x2,x3,x4,x5,x6
+
+  fx1w = 0.d0
+  fx2w = 0.d0
+  fx3w = 0.d0
+  fx4w = 0.d0
+  fx5w = 0.d0
+  fx6w = 0.d0
+
+  dr = r_hi - zabs
+  if (dr <= eps) return
+
+  ! 2-point Gauss-Legendre on [0,1]: nodes and weights
+  t1 = 0.5d0 - sqrt(3.d0)/6.d0
+  t2 = 0.5d0 + sqrt(3.d0)/6.d0
+  w1 = 0.5d0
+  w2 = 0.5d0
+
+  ! First node
+  rq = zabs + t1*dr
+  call interp_betar_quad( rq, nmesh, r, betar, bj )
+  if (rq > zabs) then
+     rzq = sqrt( max( rq*rq - zabs*zabs, 0.d0 ) )
+  else
+     rzq = 0.d0
+  endif
+  if (rzq > eps) then
+     x1 = bj * bessj(3, gn*rzq) * rzq**3 / rq**3
+     x2 = bj * bessj(2, gn*rzq) * rzq**2 / rq**3
+     x3 = bj * bessj(1, gn*rzq) * rzq     / rq**3
+     x4 = bj * bessj(1, gn*rzq) * rzq**3 / rq**3
+     x5 = bj * bessj(0, gn*rzq)          / rq**3
+     x6 = bj * bessj(0, gn*rzq) * rzq**2 / rq**3
+
+     fx1w = fx1w + w1*x1
+     fx2w = fx2w + w1*x2
+     fx3w = fx3w + w1*x3
+     fx4w = fx4w + w1*x4
+     fx5w = fx5w + w1*x5
+     fx6w = fx6w + w1*x6
+  endif
+
+  ! Second node
+  rq = zabs + t2*dr
+  call interp_betar_quad( rq, nmesh, r, betar, bj )
+  if (rq > zabs) then
+     rzq = sqrt( max( rq*rq - zabs*zabs, 0.d0 ) )
+  else
+     rzq = 0.d0
+  endif
+  if (rzq > eps) then
+     x1 = bj * bessj(3, gn*rzq) * rzq**3 / rq**3
+     x2 = bj * bessj(2, gn*rzq) * rzq**2 / rq**3
+     x3 = bj * bessj(1, gn*rzq) * rzq     / rq**3
+     x4 = bj * bessj(1, gn*rzq) * rzq**3 / rq**3
+     x5 = bj * bessj(0, gn*rzq)          / rq**3
+     x6 = bj * bessj(0, gn*rzq) * rzq**2 / rq**3
+
+     fx1w = fx1w + w2*x1
+     fx2w = fx2w + w2*x2
+     fx3w = fx3w + w2*x3
+     fx4w = fx4w + w2*x4
+     fx5w = fx5w + w2*x5
+     fx6w = fx6w + w2*x6
+  endif
+
+  ! Scale by interval length
+  fx1w = fx1w * dr
+  fx2w = fx2w * dr
+  fx3w = fx3w * dr
+  fx4w = fx4w * dr
+  fx5w = fx5w * dr
+  fx6w = fx6w * dr
+
+  return
+end subroutine f_wedge_integral_gauss
