@@ -176,6 +176,7 @@ implicit none
             call simpson( nmeshs-iz+1, x6(iz), rab(iz), fx6(kz) )
 
             ! High-order Gauss–Legendre integration over the wedge r ∈ [|z|, r(iz)]
+            ! Note: Using x1(0)..x6(0) as temporary scalars for wedge contributions
             call wedge_gl_f( gn, abs(zsl(kz)), betar, r, ndmx, iz,  &
                              x1(0), x2(0), x3(0), x4(0), x5(0), x6(0) )
 
@@ -326,7 +327,8 @@ subroutine wedge_gl_f( gn, zabs, betar, r, ndmx, iz, fx1w, fx2w, fx3w, fx4w, fx5
   real(DP), intent(in)  :: betar(ndmx), r(ndmx)
   real(DP), intent(out) :: fx1w, fx2w, fx3w, fx4w, fx5w, fx6w
 
-  ! 4-point Gauss–Legendre nodes/weights on [0,1]
+  ! 4-point Gauss–Legendre quadrature on [-1,1]
+  ! Nodes and weights are transformed to [0,1] below
   real(DP), parameter :: t1 = 0.8611363115940525752_DP
   real(DP), parameter :: t2 = 0.3399810435848562648_DP
   real(DP), parameter :: w1 = 0.3478548451374538574_DP
@@ -385,6 +387,7 @@ subroutine wedge_gl_f( gn, zabs, betar, r, ndmx, iz, fx1w, fx2w, fx3w, fx4w, fx5
         endif
      else
         ! Near the origin: assume regular f-like behavior ∝ r^3
+        ! This is consistent with the radial part of f-orbitals (R ∝ r^l for small r)
         if (r(iz) > 0.d0) then
            br = betar(iz) * (rj / r(iz))**3
         else
@@ -393,7 +396,8 @@ subroutine wedge_gl_f( gn, zabs, betar, r, ndmx, iz, fx1w, fx2w, fx3w, fx4w, fx5
      endif
 
      rho = sqrt( max( rj*rj - zabs*zabs, 0.d0 ) )
-     if (rho <= 0.d0) cycle
+     ! Skip if rho is too small (use small tolerance for numerical safety)
+     if (rho <= 1.d-12) cycle
 
      bj0 = bessj(0, gn*rho)
      bj1 = bessj(1, gn*rho)
