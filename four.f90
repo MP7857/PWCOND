@@ -133,8 +133,11 @@ implicit none
             endif
             fx1(kz)=fx1(kz)+(x1(iz-1)+x1(iz))*0.5d0*zr
          else
-            fx1(kz)=fx1(kz)+x1(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x2(iz),rab(iz),fx2(kz))
+            ! For p,d keep old wedge; for f we will override below
+            if (lb.ne.3) then
+               fx1(kz) = fx1(kz) + x1(iz)*0.5d0*zr
+            endif
+            call simpson( nmeshs-iz+1, x2(iz), rab(iz), fx2(kz) )
          endif
          if (lb.eq.1) then
             if(iz.eq.1) then
@@ -161,21 +164,28 @@ implicit none
             fx3(kz)=fx3(kz)+(x3(iz-1)+x3(iz))*0.5d0*zr
             fx4(kz)=fx4(kz)+(x4(iz-1)+x4(iz))*0.5d0*zr
          elseif (lb.eq.3) then
-            fx2(kz)=fx2(kz)+x2(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x3(iz),rab(iz),fx3(kz))
-            fx3(kz)=fx3(kz)+x3(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x4(iz),rab(iz),fx4(kz))
-            fx4(kz)=fx4(kz)+x4(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x5(iz),rab(iz),fx5(kz))
-            call simpson(nmeshs-iz+1,x6(iz),rab(iz),fx6(kz))
-            if(iz.eq.1) then
-               x5(iz-1)=0.d0
-            else
-               x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3)
-            endif
-            x6(iz-1)=0.d0
-            fx5(kz)=fx5(kz)+(x5(iz-1)+x5(iz))*0.5d0*zr
-            fx6(kz)=fx6(kz)+(x6(iz-1)+x6(iz))*0.5d0*zr
+            ! --- f: high-order wedge treatment + standard Simpson bulk ---
+
+            ! Bulk part (r >= r(iz)) as before
+            fx2(kz) = fx2(kz) + x2(iz)*0.5d0*zr
+            call simpson( nmeshs-iz+1, x3(iz), rab(iz), fx3(kz) )
+            fx3(kz) = fx3(kz) + x3(iz)*0.5d0*zr
+            call simpson( nmeshs-iz+1, x4(iz), rab(iz), fx4(kz) )
+            fx4(kz) = fx4(kz) + x4(iz)*0.5d0*zr
+            call simpson( nmeshs-iz+1, x5(iz), rab(iz), fx5(kz) )
+            call simpson( nmeshs-iz+1, x6(iz), rab(iz), fx6(kz) )
+
+            ! High-order Gauss–Legendre integration over the wedge r ∈ [|z|, r(iz)]
+            call wedge_gl_f( gn, abs(zsl(kz)), betar, r, ndmx, iz,  &
+                             x1(0), x2(0), x3(0), x4(0), x5(0), x6(0) )
+
+            fx1(kz) = fx1(kz) + x1(0)
+            fx2(kz) = fx2(kz) + x2(0)
+            fx3(kz) = fx3(kz) + x3(0)
+            fx4(kz) = fx4(kz) + x4(0)
+            fx5(kz) = fx5(kz) + x5(0)
+            fx6(kz) = fx6(kz) + x6(0)
+
          endif
        else
           fx1(kz)=0.d0
@@ -294,6 +304,113 @@ implicit none
 
   return
 end subroutine four
+
+subroutine wedge_gl_f( gn, zabs, betar, r, ndmx, iz, fx1w, fx2w, fx3w, fx4w, fx5w, fx6w )
+  !
+  ! High-order Gauss–Legendre integration of the f-projector wedge:
+  !   r ∈ [ |z|, r(iz) ], with r(iz-1) <= |z| < r(iz)
+  !
+  ! For lb = 3 we need the radial pieces corresponding to:
+  !   x1 ~ betar * J3(gn*ρ) * ρ^3 / r^3
+  !   x2 ~ betar * J2(gn*ρ) * ρ^2 / r^3
+  !   x3 ~ betar * J1(gn*ρ) * ρ   / r^3
+  !   x4 ~ betar * J1(gn*ρ) * ρ^3 / r^3
+  !   x5 ~ betar * J0(gn*ρ)       / r^3
+  !   x6 ~ betar * J0(gn*ρ) * ρ^2 / r^3
+  !
+  USE kinds,     ONLY : DP
+  implicit none
+
+  integer,  intent(in)  :: ndmx, iz
+  real(DP), intent(in)  :: gn, zabs
+  real(DP), intent(in)  :: betar(ndmx), r(ndmx)
+  real(DP), intent(out) :: fx1w, fx2w, fx3w, fx4w, fx5w, fx6w
+
+  ! 4-point Gauss–Legendre nodes/weights on [0,1]
+  real(DP), parameter :: t1 = 0.8611363115940525752_DP
+  real(DP), parameter :: t2 = 0.3399810435848562648_DP
+  real(DP), parameter :: w1 = 0.3478548451374538574_DP
+  real(DP), parameter :: w2 = 0.6521451548625461426_DP
+
+  real(DP) :: s(4), w(4)
+  real(DP) :: rlow, rhigh, dr, rj, rho, bj0, bj1, bj2, bj3
+  real(DP) :: br, r_im1, br_im1
+  real(DP) :: alpha
+  real(DP) :: bessj
+  integer  :: j
+
+  external bessj
+
+  ! Initialize outputs
+  fx1w = 0.d0
+  fx2w = 0.d0
+  fx3w = 0.d0
+  fx4w = 0.d0
+  fx5w = 0.d0
+  fx6w = 0.d0
+
+  ! If gn = 0, the f-channel contributions vanish anyway
+  if (gn .eq. 0.d0) return
+
+  rlow  = zabs
+  rhigh = r(iz)
+  dr    = rhigh - rlow
+  if (dr <= 0.d0) return
+
+  ! Map 4-point GL from [-1,1] to [0,1]
+  s(1) = 0.5d0*(1.d0 - t1)
+  s(2) = 0.5d0*(1.d0 - t2)
+  s(3) = 0.5d0*(1.d0 + t2)
+  s(4) = 0.5d0*(1.d0 + t1)
+  w(1) = 0.5d0*w1
+  w(2) = 0.5d0*w2
+  w(3) = 0.5d0*w2
+  w(4) = 0.5d0*w1
+
+  do j = 1, 4
+     rj = rlow + s(j)*dr
+     if (rj <= zabs) cycle
+
+     ! Interpolate betar(rj) between r(iz-1) and r(iz)
+     if (iz > 1) then
+        r_im1  = r(iz-1)
+        br_im1 = betar(iz-1)
+        if (r(iz) > r_im1) then
+           alpha = (rj - r_im1) / (r(iz) - r_im1)
+           if (alpha < 0.d0) alpha = 0.d0
+           if (alpha > 1.d0) alpha = 1.d0
+           br = br_im1 + alpha*(betar(iz) - br_im1)
+        else
+           br = betar(iz)
+        endif
+     else
+        ! Near the origin: assume regular f-like behavior ∝ r^3
+        if (r(iz) > 0.d0) then
+           br = betar(iz) * (rj / r(iz))**3
+        else
+           br = 0.d0
+        endif
+     endif
+
+     rho = sqrt( max( rj*rj - zabs*zabs, 0.d0 ) )
+     if (rho <= 0.d0) cycle
+
+     bj0 = bessj(0, gn*rho)
+     bj1 = bessj(1, gn*rho)
+     bj2 = bessj(2, gn*rho)
+     bj3 = bessj(3, gn*rho)
+
+     ! f-integrands consistent with x1..x6 definitions in four.f90
+     fx1w = fx1w + w(j)*dr * br * bj3 * (rho**3) / (rj**3)
+     fx2w = fx2w + w(j)*dr * br * bj2 * (rho**2) / (rj**3)
+     fx3w = fx3w + w(j)*dr * br * bj1 * (rho    ) / (rj**3)
+     fx4w = fx4w + w(j)*dr * br * bj1 * (rho**3) / (rj**3)
+     fx5w = fx5w + w(j)*dr * br * bj0               / (rj**3)
+     fx6w = fx6w + w(j)*dr * br * bj0 * (rho**2) / (rj**3)
+
+  enddo
+
+end subroutine wedge_gl_f
 
 function indexr(zz, ndim, r)
   USE kinds, only : DP
