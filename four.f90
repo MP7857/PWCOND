@@ -370,8 +370,8 @@ subroutine interp_betar_quad(rq, nmesh, r, betar, bq)
   endif
 
   L1 = (rq - x2)*(rq - x3) / (denom12*denom13)
-  L2 = (rq - x1)*(rq - x3) / ((x2 - x1)*denom23)
-  L3 = (rq - x1)*(rq - x2) / ((x3 - x1)*(x3 - x2))
+  L2 = (rq - x1)*(rq - x3) / ((-denom12)*denom23)
+  L3 = (rq - x1)*(rq - x2) / ((-denom13)*(-denom23))
 
   bq = y1*L1 + y2*L2 + y3*L3
 
