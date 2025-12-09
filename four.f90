@@ -364,8 +364,8 @@ subroutine interp_betar_quad(rq, nmesh, r, betar, bq)
 
   ! Guard against degeneracy: fall back to linear if needed
   if (abs(denom12*denom13*denom23) < 1.d-14) then
-     ! simple linear between i and i+1
-     bq = y2 + (y3 - y2) * (rq - x2) / (x3 - x2)
+     ! simple linear between r(i) and r(i+1) where rq lies
+     bq = betar(i) + (betar(i+1) - betar(i)) * (rq - r(i)) / (r(i+1) - r(i))
      return
   endif
 
@@ -413,11 +413,7 @@ subroutine f_wedge_integral_gauss( zabs, r_hi, gn, nmesh, r, betar,    &
   ! First node
   rq = zabs + t1*dr
   call interp_betar_quad( rq, nmesh, r, betar, bj )
-  if (rq > zabs) then
-     rzq = sqrt( max( rq*rq - zabs*zabs, 0.d0 ) )
-  else
-     rzq = 0.d0
-  endif
+  rzq = sqrt( max( rq*rq - zabs*zabs, 0.d0 ) )
   if (rzq > eps) then
      x1 = bj * bessj(3, gn*rzq) * rzq**3 / rq**3
      x2 = bj * bessj(2, gn*rzq) * rzq**2 / rq**3
@@ -437,11 +433,7 @@ subroutine f_wedge_integral_gauss( zabs, r_hi, gn, nmesh, r, betar,    &
   ! Second node
   rq = zabs + t2*dr
   call interp_betar_quad( rq, nmesh, r, betar, bj )
-  if (rq > zabs) then
-     rzq = sqrt( max( rq*rq - zabs*zabs, 0.d0 ) )
-  else
-     rzq = 0.d0
-  endif
+  rzq = sqrt( max( rq*rq - zabs*zabs, 0.d0 ) )
   if (rzq > eps) then
      x1 = bj * bessj(3, gn*rzq) * rzq**3 / rq**3
      x2 = bj * bessj(2, gn*rzq) * rzq**2 / rq**3
