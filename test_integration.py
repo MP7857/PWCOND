@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Validation script for f-orbital integration accuracy
-Tests the proposed spline-based method vs. current method
+Tests the proposed fine-grid method (cubic spline interpolation + fine grid sampling)
+vs. current method (direct Simpson on logarithmic grid)
 """
 
 import numpy as np
@@ -29,8 +30,12 @@ def integrand_smooth(r, z):
 
 def exact_integrand(r, g, z):
     """Full integrand for reference calculation"""
-    if r**2 < z**2: return 0.0
-    r_perp = np.sqrt(r**2 - z**2)
+    # Handle boundary: r must be >= |z| for physical region
+    if r**2 < z**2 - 1e-12: return 0.0
+    if abs(r**2 - z**2) < 1e-12:
+        r_perp = 0.0
+    else:
+        r_perp = np.sqrt(r**2 - z**2)
     return integrand_smooth(r, z) * jv(m_bessel, g * r_perp)
 
 # --- 3. GRIDS ---

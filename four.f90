@@ -348,7 +348,9 @@ subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, result)
 
   zabs = abs(z)
   nmesh_end = iz + npts - 1
-  r_start = max(zabs, r(1))  ! Start from abs(z), not r(iz)
+  ! Start from abs(z) or first grid point, whichever is larger
+  ! This ensures we don't integrate in the unphysical region r < |z|
+  r_start = max(zabs, r(1))
   r_end = r(nmesh_end)
   
   ! Safety check
@@ -358,7 +360,9 @@ subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, result)
   endif
 
   ! Define Fine Grid Density
-  ! At least 10 points per Bessel oscillation period
+  ! Bessel oscillation period ~ 2*pi/g, so we want at least ~10 points per period
+  ! This gives grid spacing ~ pi/(5*g), hence n_fine ~ g * range / (pi/(5*g)) ~ 5*g*range/pi
+  ! Using factor of 5 (instead of ~5/pi) provides extra safety margin
   n_fine = max(500, int(g * (r_end - r_start) * 5.0d0))
   n_fine = min(n_fine, 5000) ! Cap to avoid excessive cost
   
