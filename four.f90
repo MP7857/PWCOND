@@ -35,9 +35,9 @@ subroutine four(w0, z0, dz, tblm, taunew, r, rab, betar)
 !                      z0< z <z0+dz
 !                      g - 2D g-vector
 !
-  USE kinds, ONLY: DP
+  USE kinds, ONLY : DP
   USE constants, ONLY : tpi, fpi
-  USE radial_grids, only : ndmx
+  USE radial_grids, ONLY : ndmx
   USE cell_base, ONLY : alat, tpiba
   USE cond, ONLY : sarea, nz1, ngper, gper, ninsh, gnsh, ngpsh
 
@@ -171,7 +171,12 @@ implicit none
             else
                betar_z = betar(iz) - (betar(iz)-betar(iz-1))/dr*zr
             endif
-            val_z_x5 = betar_z / (abs(zsl(kz))**3)
+            ! Guard against division by zero when z is very small
+            if (abs(zsl(kz)) > eps) then
+               val_z_x5 = betar_z / (abs(zsl(kz))**3)
+            else
+               val_z_x5 = 0.d0
+            endif
             
             ! Call integrate_fine for each channel with appropriate m-values
             ! x1: m=3, x2: m=2, x3: m=1, x4: m=1, x5: m=0, x6: m=0
@@ -338,8 +343,8 @@ subroutine integrate_fine(n_coarse, iz, r_coarse, y_smooth, z_val, &
 ! Output:
 !   result     : integral value
 !
-  USE kinds, ONLY: DP
-  USE radial_grids, only : ndmx
+  USE kinds, ONLY : DP
+  USE radial_grids, ONLY : ndmx
   implicit none
   
   integer, intent(in) :: n_coarse, iz, m_bessel
@@ -428,7 +433,7 @@ subroutine build_natural_spline(n, x, y, a, b, c, d)
 !
 ! Build natural cubic spline coefficients
 !
-  USE kinds, ONLY: DP
+  USE kinds, ONLY : DP
   implicit none
   
   integer, intent(in) :: n
@@ -446,9 +451,12 @@ subroutine build_natural_spline(n, x, y, a, b, c, d)
     a(i) = y(i)
   enddo
   
-  ! Compute h values
+  ! Compute h values and check for zero spacing
   do i = 1, n-1
     h(i) = x(i+1) - x(i)
+    if (abs(h(i)) < eps) then
+      call errore('build_natural_spline', 'duplicate x values in spline', i)
+    endif
   enddo
   
   ! Compute alpha values (only indices 2 to n-1 are used)
@@ -495,7 +503,7 @@ subroutine eval_spline(n, x, a, b, c, d, x_eval, y_eval)
 !
 ! Evaluate cubic spline at a given point
 !
-  USE kinds, ONLY: DP
+  USE kinds, ONLY : DP
   implicit none
   
   integer, intent(in) :: n
