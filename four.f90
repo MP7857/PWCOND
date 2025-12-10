@@ -351,12 +351,10 @@ subroutine integrate_fine(n_coarse, iz, r_coarse, y_smooth, z_val, &
   real(DP), intent(in) :: r_coarse(ndmx), y_smooth(0:ndmx), z_val, gn, val_z
   real(DP), intent(out) :: result
   
-  integer :: i, n_fine, idx
+  integer :: i, n_fine
   real(DP) :: r_start, r_end, dr_fine, r_perp, bessj
   real(DP), allocatable :: r_fine(:), y_fine(:), integrand(:)
   real(DP), allocatable :: a(:), b(:), c(:), d(:)
-  real(DP) :: h, dx, t, y0, y1, y2
-  integer :: j
   real(DP), parameter :: eps = 1.d-10
   
   ! Define starting and ending points
