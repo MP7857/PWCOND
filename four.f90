@@ -179,15 +179,14 @@ implicit none
             
             ! Calculate x5 at |z| by interpolating beta(r)
             zr = abs(zsl(kz))
-            dr = r(iz) - r(iz-1)
-            if (iz.eq.1) dr = r(iz) ! Safety for r(0)
             
             ! Linear interpolation of beta to |z|
             if (iz > 1) then
-               ! Interpolate between iz-1 and iz
-               val_beta_z = betar(iz) - (betar(iz)-betar(iz-1))/dr * (r(iz)-zr)
+               ! Interpolate between iz-1 and iz using standard form
+               dr = r(iz) - r(iz-1)
+               val_beta_z = betar(iz-1) + (betar(iz)-betar(iz-1)) * (zr-r(iz-1)) / dr
             else
-               ! Fallback if zr < r(1)
+               ! Extrapolate if zr < r(1) - assumes linear behavior near origin
                val_beta_z = betar(1) * (zr / r(1))
             endif
             
@@ -464,7 +463,8 @@ subroutine lin_interp_arrays(npts, iz, x, y, x_eval, z_abs, val_at_z, y_eval)
   ! CASE 1: x_eval is in the "gap" between |z| and the first grid point r(iz)
   if (x_eval < x(iz)) then
       ! Interpolate between (z_abs, val_at_z) and (x(iz), y(iz))
-      if (x(iz) > z_abs) then
+      ! Add tolerance check to prevent division by near-zero values
+      if (x(iz) - z_abs > 1.0d-12) then
          y_eval = val_at_z + (y(iz) - val_at_z) * (x_eval - z_abs) / (x(iz) - z_abs)
       else
          y_eval = val_at_z
