@@ -49,7 +49,7 @@ implicit none
   complex(DP), parameter :: cim=(0.d0, 1.d0)
   real(DP) :: gn, s1, s2, s3, s4, cs, sn, cs2, sn2, cs3, sn3, rz, dz1, zr, &
                    dr, z0, dz,  bessj, taunew(4), r(ndmx),         &
-                   rab(ndmx), betar(ndmx)
+                   rab(ndmx), betar(ndmx), val_z_x5, betar_z
   real(DP), allocatable :: x1(:), x2(:), x3(:), x4(:), x5(:), x6(:)
   real(DP), allocatable :: fx1(:), fx2(:), fx3(:), fx4(:), fx5(:), fx6(:), zsl(:)
   complex(DP) :: w0(nz1, ngper, 7)
@@ -108,23 +108,26 @@ implicit none
                x3(ir)=betar(ir)*bessj(0,gn*rz)/r(ir)**2
                x4(ir)=betar(ir)*bessj(0,gn*rz)
             elseif (lb.eq.3) then
-               x1(ir)=betar(ir)*bessj(3,gn*rz)*rz**3/r(ir)**3
-               x2(ir)=betar(ir)*bessj(2,gn*rz)*rz**2/r(ir)**3
-               x3(ir)=betar(ir)*bessj(1,gn*rz)*rz/r(ir)**3
-               x4(ir)=betar(ir)*bessj(1,gn*rz)*rz**3/r(ir)**3
-               x5(ir)=betar(ir)*bessj(0,gn*rz)/r(ir)**3
-               x6(ir)=betar(ir)*bessj(0,gn*rz)*rz**2/r(ir)**3
+               ! Store smooth part without Bessel for fine-grid interpolation
+               x1(ir)=betar(ir)*rz**3/r(ir)**3
+               x2(ir)=betar(ir)*rz**2/r(ir)**3
+               x3(ir)=betar(ir)*rz/r(ir)**3
+               x4(ir)=betar(ir)*rz**3/r(ir)**3
+               x5(ir)=betar(ir)/r(ir)**3
+               x6(ir)=betar(ir)*rz**2/r(ir)**3
             else
                call errore ('four','ls not programmed ',1)
             endif
          enddo
-         call simpson(nmeshs-iz+1,x1(iz),rab(iz),fx1(kz))
          if (iz.eq.1) then
             dr=r(iz)
          else
             dr=r(iz)-r(iz-1)
          endif
          zr=r(iz)-abs(zsl(kz))
+         if (lb.ne.3) then
+            call simpson(nmeshs-iz+1,x1(iz),rab(iz),fx1(kz))
+         endif
          if (lb.eq.0) then
             if (iz.eq.1) then
                x1(iz-1)=betar(iz)-betar(iz)/dr*zr
@@ -132,7 +135,7 @@ implicit none
                x1(iz-1)=betar(iz)-(betar(iz)-betar(iz-1))/dr*zr
             endif
             fx1(kz)=fx1(kz)+(x1(iz-1)+x1(iz))*0.5d0*zr
-         else
+         elseif (lb.ne.3) then
             fx1(kz)=fx1(kz)+x1(iz)*0.5d0*zr
             call simpson(nmeshs-iz+1,x2(iz),rab(iz),fx2(kz))
          endif
@@ -161,21 +164,23 @@ implicit none
             fx3(kz)=fx3(kz)+(x3(iz-1)+x3(iz))*0.5d0*zr
             fx4(kz)=fx4(kz)+(x4(iz-1)+x4(iz))*0.5d0*zr
          elseif (lb.eq.3) then
-            fx2(kz)=fx2(kz)+x2(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x3(iz),rab(iz),fx3(kz))
-            fx3(kz)=fx3(kz)+x3(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x4(iz),rab(iz),fx4(kz))
-            fx4(kz)=fx4(kz)+x4(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x5(iz),rab(iz),fx5(kz))
-            call simpson(nmeshs-iz+1,x6(iz),rab(iz),fx6(kz))
+            ! Use fine-grid integration for f-orbitals with improved accuracy
+            ! Compute boundary value for singular channel (x5)
             if(iz.eq.1) then
-               x5(iz-1)=0.d0
+               betar_z = betar(iz)
             else
-               x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3)
+               betar_z = betar(iz) - (betar(iz)-betar(iz-1))/dr*zr
             endif
-            x6(iz-1)=0.d0
-            fx5(kz)=fx5(kz)+(x5(iz-1)+x5(iz))*0.5d0*zr
-            fx6(kz)=fx6(kz)+(x6(iz-1)+x6(iz))*0.5d0*zr
+            val_z_x5 = betar_z / (abs(zsl(kz))**3)
+            
+            ! Call integrate_fine for each channel with appropriate m-values
+            ! x1: m=3, x2: m=2, x3: m=1, x4: m=1, x5: m=0, x6: m=0
+            call integrate_fine(nmeshs-iz+1, iz, r, x1, zsl(kz), gn, 3, 0.d0, fx1(kz))
+            call integrate_fine(nmeshs-iz+1, iz, r, x2, zsl(kz), gn, 2, 0.d0, fx2(kz))
+            call integrate_fine(nmeshs-iz+1, iz, r, x3, zsl(kz), gn, 1, 0.d0, fx3(kz))
+            call integrate_fine(nmeshs-iz+1, iz, r, x4, zsl(kz), gn, 1, 0.d0, fx4(kz))
+            call integrate_fine(nmeshs-iz+1, iz, r, x5, zsl(kz), gn, 0, val_z_x5, fx5(kz))
+            call integrate_fine(nmeshs-iz+1, iz, r, x6, zsl(kz), gn, 0, 0.d0, fx6(kz))
          endif
        else
           fx1(kz)=0.d0
@@ -311,3 +316,197 @@ function indexr(zz, ndim, r)
   indexr=iz
   return
 end function indexr
+
+!-----------------------------------------------------------------------
+subroutine integrate_fine(n_coarse, iz, r_coarse, y_smooth, z_val, &
+                          gn, m_bessel, val_z, result)
+!-----------------------------------------------------------------------
+!
+! This subroutine performs fine-grid integration for f-orbital (l=3)
+! calculations with improved accuracy.
+!
+! Input:
+!   n_coarse   : number of coarse grid points
+!   iz         : starting index in coarse grid
+!   r_coarse   : radial grid points (coarse)
+!   y_smooth   : smooth integrand values on coarse grid (without Bessel)
+!   z_val      : z-coordinate value
+!   gn         : g-vector magnitude
+!   m_bessel   : Bessel function order (0, 1, 2, or 3)
+!   val_z      : boundary value at |z|
+!
+! Output:
+!   result     : integral value
+!
+  USE kinds, ONLY: DP
+  USE radial_grids, only : ndmx
+  implicit none
+  
+  integer, intent(in) :: n_coarse, iz, m_bessel
+  real(DP), intent(in) :: r_coarse(ndmx), y_smooth(0:ndmx), z_val, gn, val_z
+  real(DP), intent(out) :: result
+  
+  integer :: i, n_fine, idx
+  real(DP) :: r_start, r_end, dr_fine, r_perp, bessj
+  real(DP), allocatable :: r_fine(:), y_fine(:), integrand(:)
+  real(DP), allocatable :: a(:), b(:), c(:), d(:)
+  real(DP) :: h, dx, t, y0, y1, y2
+  integer :: j
+  real(DP), parameter :: eps = 1.d-10
+  
+  ! Define starting and ending points
+  r_start = abs(z_val)
+  r_end = r_coarse(iz + n_coarse - 1)
+  
+  ! Build dense linear grid (ensure odd number for Simpson's rule)
+  n_fine = max(1001, 2*n_coarse + 1)
+  if (mod(n_fine, 2) == 0) n_fine = n_fine + 1
+  
+  allocate(r_fine(n_fine))
+  allocate(y_fine(n_fine))
+  allocate(integrand(n_fine))
+  
+  ! Create fine linear grid
+  dr_fine = (r_end - r_start) / real(n_fine - 1, DP)
+  do i = 1, n_fine
+    r_fine(i) = r_start + real(i - 1, DP) * dr_fine
+  enddo
+  
+  ! Natural cubic spline interpolation
+  ! Allocate spline coefficients
+  allocate(a(n_coarse))
+  allocate(b(n_coarse))
+  allocate(c(n_coarse))
+  allocate(d(n_coarse))
+  
+  ! Build spline from coarse grid
+  call build_natural_spline(n_coarse, r_coarse(iz:iz+n_coarse-1), &
+                            y_smooth(iz:iz+n_coarse-1), a, b, c, d)
+  
+  ! Interpolate onto fine grid
+  do i = 1, n_fine
+    call eval_spline(n_coarse, r_coarse(iz:iz+n_coarse-1), &
+                     a, b, c, d, r_fine(i), y_fine(i))
+  enddo
+  
+  ! Multiply by Bessel function and compute integrand
+  do i = 1, n_fine
+    ! Guard against roundoff: r_perp = sqrt(r^2 - z^2)
+    if (r_fine(i)**2 > z_val**2 + eps) then
+      r_perp = sqrt(r_fine(i)**2 - z_val**2)
+    else
+      r_perp = 0.d0
+    endif
+    
+    ! Multiply smooth part by appropriate Bessel function
+    integrand(i) = y_fine(i) * bessj(m_bessel, gn * r_perp)
+  enddo
+  
+  ! Handle boundary value at r = |z|
+  integrand(1) = val_z
+  
+  ! Apply composite Simpson's rule
+  result = 0.d0
+  do i = 1, n_fine - 2, 2
+    result = result + (integrand(i) + 4.d0*integrand(i+1) + integrand(i+2))
+  enddo
+  result = result * dr_fine / 3.d0
+  
+  deallocate(r_fine, y_fine, integrand)
+  deallocate(a, b, c, d)
+  
+end subroutine integrate_fine
+
+!-----------------------------------------------------------------------
+subroutine build_natural_spline(n, x, y, a, b, c, d)
+!-----------------------------------------------------------------------
+!
+! Build natural cubic spline coefficients
+!
+  USE kinds, ONLY: DP
+  implicit none
+  
+  integer, intent(in) :: n
+  real(DP), intent(in) :: x(n), y(n)
+  real(DP), intent(out) :: a(n), b(n), c(n), d(n)
+  
+  integer :: i
+  real(DP), allocatable :: h(:), alpha(:), l(:), mu(:), z(:)
+  
+  allocate(h(n-1), alpha(n-1), l(n), mu(n-1), z(n))
+  
+  ! Copy y values to a
+  do i = 1, n
+    a(i) = y(i)
+  enddo
+  
+  ! Compute h values
+  do i = 1, n-1
+    h(i) = x(i+1) - x(i)
+  enddo
+  
+  ! Compute alpha values
+  do i = 2, n-1
+    alpha(i) = (3.d0/h(i)) * (a(i+1) - a(i)) - &
+               (3.d0/h(i-1)) * (a(i) - a(i-1))
+  enddo
+  
+  ! Solve tridiagonal system (natural spline: c(1)=c(n)=0)
+  l(1) = 1.d0
+  mu(1) = 0.d0
+  z(1) = 0.d0
+  
+  do i = 2, n-1
+    l(i) = 2.d0 * (x(i+1) - x(i-1)) - h(i-1) * mu(i-1)
+    mu(i) = h(i) / l(i)
+    z(i) = (alpha(i) - h(i-1) * z(i-1)) / l(i)
+  enddo
+  
+  l(n) = 1.d0
+  z(n) = 0.d0
+  c(n) = 0.d0
+  
+  ! Back substitution
+  do i = n-1, 1, -1
+    c(i) = z(i) - mu(i) * c(i+1)
+    b(i) = (a(i+1) - a(i)) / h(i) - h(i) * (c(i+1) + 2.d0*c(i)) / 3.d0
+    d(i) = (c(i+1) - c(i)) / (3.d0 * h(i))
+  enddo
+  
+  deallocate(h, alpha, l, mu, z)
+  
+end subroutine build_natural_spline
+
+!-----------------------------------------------------------------------
+subroutine eval_spline(n, x, a, b, c, d, x_eval, y_eval)
+!-----------------------------------------------------------------------
+!
+! Evaluate cubic spline at a given point
+!
+  USE kinds, ONLY: DP
+  implicit none
+  
+  integer, intent(in) :: n
+  real(DP), intent(in) :: x(n), a(n), b(n), c(n), d(n), x_eval
+  real(DP), intent(out) :: y_eval
+  
+  integer :: i
+  real(DP) :: dx
+  
+  ! Find interval containing x_eval
+  i = 1
+  do while (i < n .and. x_eval > x(i+1))
+    i = i + 1
+  enddo
+  
+  ! Evaluate spline
+  if (i < n) then
+    dx = x_eval - x(i)
+    y_eval = a(i) + b(i)*dx + c(i)*dx**2 + d(i)*dx**3
+  else
+    ! Extrapolate using last interval
+    dx = x_eval - x(n-1)
+    y_eval = a(n-1) + b(n-1)*dx + c(n-1)*dx**2 + d(n-1)*dx**3
+  endif
+  
+end subroutine eval_spline
