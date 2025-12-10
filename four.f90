@@ -432,8 +432,9 @@ subroutine build_natural_spline(n, x, y, a, b, c, d)
   
   integer :: i
   real(DP), allocatable :: h(:), alpha(:), l(:), mu(:), z(:)
+  real(DP), parameter :: eps = 1.d-10
   
-  allocate(h(n-1), alpha(n-1), l(n), mu(n-1), z(n))
+  allocate(h(n-1), alpha(n), l(n), mu(n-1), z(n))
   
   ! Copy y values to a
   do i = 1, n
@@ -445,11 +446,13 @@ subroutine build_natural_spline(n, x, y, a, b, c, d)
     h(i) = x(i+1) - x(i)
   enddo
   
-  ! Compute alpha values
+  ! Compute alpha values (only indices 2 to n-1 are used)
+  alpha(1) = 0.d0
   do i = 2, n-1
     alpha(i) = (3.d0/h(i)) * (a(i+1) - a(i)) - &
                (3.d0/h(i-1)) * (a(i) - a(i-1))
   enddo
+  alpha(n) = 0.d0
   
   ! Solve tridiagonal system (natural spline: c(1)=c(n)=0)
   l(1) = 1.d0
@@ -458,6 +461,10 @@ subroutine build_natural_spline(n, x, y, a, b, c, d)
   
   do i = 2, n-1
     l(i) = 2.d0 * (x(i+1) - x(i-1)) - h(i-1) * mu(i-1)
+    ! Check for potential division by zero
+    if (abs(l(i)) < eps) then
+      call errore('build_natural_spline', 'singular matrix in spline', i)
+    endif
     mu(i) = h(i) / l(i)
     z(i) = (alpha(i) - h(i-1) * z(i-1)) / l(i)
   enddo
@@ -495,18 +502,16 @@ subroutine eval_spline(n, x, a, b, c, d, x_eval, y_eval)
   
   ! Find interval containing x_eval
   i = 1
-  do while (i < n .and. x_eval > x(i+1))
+  do while (i < n-1 .and. x_eval > x(i+1))
     i = i + 1
   enddo
   
-  ! Evaluate spline
-  if (i < n) then
-    dx = x_eval - x(i)
-    y_eval = a(i) + b(i)*dx + c(i)*dx**2 + d(i)*dx**3
-  else
-    ! Extrapolate using last interval
-    dx = x_eval - x(n-1)
-    y_eval = a(n-1) + b(n-1)*dx + c(n-1)*dx**2 + d(n-1)*dx**3
-  endif
+  ! Ensure i is valid (between 1 and n-1)
+  if (i >= n) i = n - 1
+  if (i < 1) i = 1
+  
+  ! Evaluate spline using interval [x(i), x(i+1)]
+  dx = x_eval - x(i)
+  y_eval = a(i) + b(i)*dx + c(i)*dx**2 + d(i)*dx**3
   
 end subroutine eval_spline
