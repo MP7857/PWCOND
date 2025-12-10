@@ -8,6 +8,10 @@
 ! Modified by M. Pourfath (2025)
 ! Extended to include f-orbital (l = 3) calculations.
 !
+! This version uses only cubic-spline interpolation on the fine grid
+! for all f-orbital integrals. The monotone PCHIP interpolation is
+! retained in the source for reference but is not invoked.
+!
 subroutine four(w0, z0, dz, tblm, taunew, r, rab, betar)
 !
 ! This routine computes the bidimensional fourier transform of the
@@ -198,15 +202,16 @@ implicit none
             endif
             
             ! --- Call Robust Integration with Start Value ---
-            ! Use cubic spline for x1-x4, x6 (smooth functions with r_perp factors)
-            ! Use PCHIP for x5 (has 1/r^3 singularity - needs monotone interpolation)
+            ! Use cubic spline interpolation for all f-orbital integrals
+            ! (PCHIP is retained in source for reference but not invoked)
             call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x1, zsl(kz), gn, 3, 0.d0, fx1(kz), .false.)
             call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x2, zsl(kz), gn, 2, 0.d0, fx2(kz), .false.)
             call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x3, zsl(kz), gn, 1, 0.d0, fx3(kz), .false.)
             call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x4, zsl(kz), gn, 1, 0.d0, fx4(kz), .false.)
             
-            ! Pass the calculated non-zero start value for x5, use PCHIP for monotonicity
-            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x5, zsl(kz), gn, 0, val_z_x5, fx5(kz), .true.)
+            ! Pass the calculated non-zero start value for x5
+            ! Using cubic spline (not PCHIP) for simplicity
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x5, zsl(kz), gn, 0, val_z_x5, fx5(kz), .false.)
             
             call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x6, zsl(kz), gn, 0, 0.d0, fx6(kz), .false.)
          endif
@@ -364,7 +369,7 @@ subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, val_at_z, 
   !   g: magnitude of g-vector
   !   m: Bessel function order
   !   val_at_z: Value of smooth function at r=|z|
-  !   use_pchip: if true, use PCHIP interpolation; else use cubic spline
+  !   use_pchip: kept for compatibility but always uses cubic spline
   ! Output:
   !   result: integrated value
   !-----------------------------------------------------------------------
@@ -417,14 +422,9 @@ subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, val_at_z, 
   do i = 1, n_fine
      r_curr = r_start + dble(i-1)*dr_fine
      
-     ! Choose interpolation method based on flag
-     if (use_pchip) then
-        ! PCHIP interpolation - monotone preserving, better for 1/r^3 singularities
-        call pchip_interp(npts, iz, r, x_smooth, r_curr, zabs, val_at_z, val_smooth)
-     else
-        ! Cubic spline interpolation - smoother for well-behaved functions
-        call cubic_spline_interp(npts, iz, r, x_smooth, r_curr, zabs, val_at_z, val_smooth)
-     endif
+     ! Use cubic spline interpolation for all f-orbital integrals
+     ! (use_pchip flag is ignored; PCHIP code retained for reference)
+     call cubic_spline_interp(npts, iz, r, x_smooth, r_curr, zabs, val_at_z, val_smooth)
      
      ! Compute Bessel function
      r_perp = 0.d0
