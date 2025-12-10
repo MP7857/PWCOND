@@ -181,8 +181,8 @@ plt.tight_layout()
 plt.savefig('pchip_spline_comparison.png', dpi=150)
 print("\nPlot saved to pchip_spline_comparison.png")
 
-median_improve_cubic = np.median([e1/e2 if e2 > 0 else 1 for e1, e2 in zip(errors_linear, errors_cubic) if e1 > 0])
-median_improve_pchip = np.median([e1/e2 if e2 > 0 else 1 for e1, e2 in zip(errors_linear, errors_pchip) if e1 > 0])
+median_improve_cubic = np.median([e1/max(e2, 1e-15) for e1, e2 in zip(errors_linear, errors_cubic) if e1 > 0])
+median_improve_pchip = np.median([e1/max(e2, 1e-15) for e1, e2 in zip(errors_linear, errors_pchip) if e1 > 0])
 
 print(f"\nMedian improvement (cubic spline): {median_improve_cubic:.1f}x")
 print(f"Median improvement (PCHIP): {median_improve_pchip:.1f}x")

@@ -400,9 +400,10 @@ subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, val_at_z, 
   ! Define Fine Grid Density
   ! Bessel oscillation period ~ 2*pi/g, so we want at least 20-40 points per period
   ! for high accuracy with cubic/PCHIP interpolation
-  ! n_fine ~ 40 * g * (r_end - r_start) / (2*pi) ~ 6.4 * g * range
-  ! Using factor of 40 for high accuracy (can be reduced if needed)
-  n_fine = max(500, int(g * (r_end - r_start) * 40.0d0))
+  ! Target: 40 points/period gives spacing = (2*pi/g)/40 = pi/(20*g)
+  ! Therefore: n_fine = range / spacing = range * 20*g/pi ~ 6.37 * g * range
+  ! We use factor of 6.4 for ~40 points per Bessel period
+  n_fine = max(500, int(g * (r_end - r_start) * 6.4d0))
   n_fine = min(n_fine, 10000) ! Cap to avoid excessive cost
   
   ! Ensure odd number for Simpson's rule
@@ -562,11 +563,11 @@ subroutine pchip_interp(npts, iz, x, y, x_eval, z_abs, val_at_z, y_eval)
   d(n_nodes) = delta_k(n_nodes-1)  ! One-sided at end
   
   do i = 2, n_nodes - 1
-     ! Check for monotonicity - if slopes change sign, set d=0
-     if (delta_k(i-1) * delta_k(i) <= 0.d0) then
+     ! Check for monotonicity - if slopes change sign or either is zero, set d=0
+     if (delta_k(i-1) * delta_k(i) <= 0.d0 .or. abs(delta_k(i-1)) < 1.0d-12 .or. abs(delta_k(i)) < 1.0d-12) then
         d(i) = 0.d0
      else
-        ! Weighted harmonic mean
+        ! Weighted harmonic mean (safe since both deltas are non-zero and same sign)
         h1 = x_nodes(i) - x_nodes(i-1)
         h2 = x_nodes(i+1) - x_nodes(i)
         w1 = 2.d0*h2 + h1
@@ -576,6 +577,8 @@ subroutine pchip_interp(npts, iz, x, y, x_eval, z_abs, val_at_z, y_eval)
   enddo
   
   ! Step 3: Adjust derivatives to ensure monotonicity in each interval
+  ! This uses the Fritsch-Carlson constraint: alpha^2 + beta^2 <= 9
+  ! where alpha = d(i)/delta(i) and beta = d(i+1)/delta(i)
   do i = 1, n_nodes - 1
      if (abs(delta_k(i)) < 1.0d-12) then
         d(i) = 0.d0
@@ -584,6 +587,7 @@ subroutine pchip_interp(npts, iz, x, y, x_eval, z_abs, val_at_z, y_eval)
         alpha = d(i) / delta_k(i)
         beta = d(i+1) / delta_k(i)
         ! Check if (alpha,beta) is outside the monotonicity region
+        ! The factor of 9 comes from the Fritsch-Carlson PCHIP algorithm
         if (alpha**2 + beta**2 > 9.d0) then
            tau = 3.d0 / sqrt(alpha**2 + beta**2)
            d(i) = tau * alpha * delta_k(i)
