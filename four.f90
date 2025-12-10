@@ -49,7 +49,7 @@ implicit none
   complex(DP), parameter :: cim=(0.d0, 1.d0)
   real(DP) :: gn, s1, s2, s3, s4, cs, sn, cs2, sn2, cs3, sn3, rz, dz1, zr, &
                    dr, z0, dz,  bessj, taunew(4), r(ndmx),         &
-                   rab(ndmx), betar(ndmx)
+                   rab(ndmx), betar(ndmx), val_beta_z, val_z_x5
   real(DP), allocatable :: x1(:), x2(:), x3(:), x4(:), x5(:), x6(:)
   real(DP), allocatable :: fx1(:), fx2(:), fx3(:), fx4(:), fx5(:), fx6(:), zsl(:)
   complex(DP) :: w0(nz1, ngper, 7)
@@ -171,12 +171,44 @@ implicit none
             ! 1. Interpolating smooth part onto fine grid
             ! 2. Evaluating Bessel functions on fine grid
             ! 3. Integrating the product
-            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x1, zsl(kz), gn, 3, fx1(kz))
-            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x2, zsl(kz), gn, 2, fx2(kz))
-            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x3, zsl(kz), gn, 1, fx3(kz))
-            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x4, zsl(kz), gn, 1, fx4(kz))
-            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x5, zsl(kz), gn, 0, fx5(kz))
-            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x6, zsl(kz), gn, 0, fx6(kz))
+            
+            ! --- Calculate Smooth Integrand Value at r = |z| ---
+            ! Most terms (x1,x2,x3,x4,x6) depend on r_perp = sqrt(r^2-z^2).
+            ! At r=|z|, r_perp=0, so these terms are exactly 0.0.
+            ! Only x5 (which is beta(r)/r^3) is non-zero at |z|.
+            
+            ! Calculate x5 at |z| by interpolating beta(r)
+            zr = abs(zsl(kz))
+            dr = r(iz) - r(iz-1)
+            if (iz.eq.1) dr = r(iz) ! Safety for r(0)
+            
+            ! Linear interpolation of beta to |z|
+            if (iz > 1) then
+               ! Interpolate between iz-1 and iz
+               val_beta_z = betar(iz) - (betar(iz)-betar(iz-1))/dr * (r(iz)-zr)
+            else
+               ! Fallback if zr < r(1)
+               val_beta_z = betar(1) * (zr / r(1))
+            endif
+            
+            ! Calculate x5 start value (beta(z) / z^3)
+            if (zr > 1.0d-9) then
+               val_z_x5 = val_beta_z / (zr**3)
+            else
+               val_z_x5 = 0.d0
+            endif
+            
+            ! --- Call Robust Integration with Start Value ---
+            ! Pass 0.d0 for terms containing r_perp, and val_z_x5 for x5
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x1, zsl(kz), gn, 3, 0.d0, fx1(kz))
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x2, zsl(kz), gn, 2, 0.d0, fx2(kz))
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x3, zsl(kz), gn, 1, 0.d0, fx3(kz))
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x4, zsl(kz), gn, 1, 0.d0, fx4(kz))
+            
+            ! Pass the calculated non-zero start value for x5
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x5, zsl(kz), gn, 0, val_z_x5, fx5(kz))
+            
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x6, zsl(kz), gn, 0, 0.d0, fx6(kz))
          endif
        else
           fx1(kz)=0.d0
@@ -314,7 +346,7 @@ function indexr(zz, ndim, r)
 end function indexr
 
 !-----------------------------------------------------------------------
-subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, result)
+subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, val_at_z, result)
   !-----------------------------------------------------------------------
   ! Interpolates smooth integrand from x_smooth array onto a fine linear 
   ! grid, evaluates Bessel function J_m on that grid, and integrates.
@@ -331,6 +363,7 @@ subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, result)
   !   z: z-coordinate of slice
   !   g: magnitude of g-vector
   !   m: Bessel function order
+  !   val_at_z: Value of smooth function at r=|z|
   ! Output:
   !   result: integrated value
   !-----------------------------------------------------------------------
@@ -338,19 +371,22 @@ subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, result)
   USE radial_grids, only : ndmx
   implicit none
   integer, intent(in) :: npts, iz, m
-  real(DP), intent(in) :: r(ndmx), x_smooth(0:ndmx), z, g
+  real(DP), intent(in) :: r(ndmx), x_smooth(0:ndmx), z, g, val_at_z
   real(DP), intent(out) :: result
+  
+  ! DECLARE BESSJ AS EXTERNAL TO AVOID ARRAY CONFUSION
+  real(DP), external :: bessj
 
   integer :: i, n_fine, ir, nmesh_end
   real(DP) :: zabs, r_start, r_end, dr_fine, r_curr, r_perp
-  real(DP) :: val_smooth, val_bess, b_arg, bessj
+  real(DP) :: val_smooth, val_bess, b_arg
   real(DP), allocatable :: y_fine(:)
 
   zabs = abs(z)
   nmesh_end = iz + npts - 1
-  ! Start from abs(z) or first grid point, whichever is larger
-  ! This ensures we don't integrate in the unphysical region r < |z|
-  r_start = max(zabs, r(1))
+  
+  ! Start EXACTLY at |z|
+  r_start = zabs
   r_end = r(nmesh_end)
   
   ! Safety check
@@ -377,8 +413,8 @@ subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, result)
   do i = 1, n_fine
      r_curr = r_start + dble(i-1)*dr_fine
      
-     ! Interpolate smooth part from x_smooth array
-     call lin_interp_arrays(npts, iz, r, x_smooth, r_curr, val_smooth)
+     ! PASS val_at_z and zabs to the interpolator
+     call lin_interp_arrays(npts, iz, r, x_smooth, r_curr, zabs, val_at_z, val_smooth)
      
      ! Compute Bessel function
      r_perp = 0.d0
@@ -409,31 +445,40 @@ subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, result)
 end subroutine integrate_fine_from_arrays
 
 !-----------------------------------------------------------------------
-subroutine lin_interp_arrays(npts, iz, x, y, x_eval, y_eval)
+subroutine lin_interp_arrays(npts, iz, x, y, x_eval, z_abs, val_at_z, y_eval)
   !-----------------------------------------------------------------------
   ! Linear interpolation for arrays starting at index iz
+  ! Input added: z_abs (start of physical range), val_at_z (value at z_abs)
   ! Interpolates y values defined on x grid from iz to iz+npts-1
   !-----------------------------------------------------------------------
   USE kinds, only : DP
   USE radial_grids, only : ndmx
   implicit none
   integer, intent(in) :: npts, iz
-  real(DP), intent(in) :: x(ndmx), y(0:ndmx), x_eval
+  real(DP), intent(in) :: x(ndmx), y(0:ndmx), x_eval, z_abs, val_at_z
   real(DP), intent(out) :: y_eval
   integer :: i, iend
 
   iend = iz + npts - 1
   
-  if (x_eval <= x(iz)) then
-     y_eval = y(iz)
-     return
+  ! CASE 1: x_eval is in the "gap" between |z| and the first grid point r(iz)
+  if (x_eval < x(iz)) then
+      ! Interpolate between (z_abs, val_at_z) and (x(iz), y(iz))
+      if (x(iz) > z_abs) then
+         y_eval = val_at_z + (y(iz) - val_at_z) * (x_eval - z_abs) / (x(iz) - z_abs)
+      else
+         y_eval = val_at_z
+      endif
+      return
   endif
+
+  ! CASE 2: x_eval is beyond the grid (clamp)
   if (x_eval >= x(iend)) then
      y_eval = y(iend)
      return
   endif
 
-  ! Linear search
+  ! CASE 3: Standard Linear search within the grid
   do i = iz, iend-1
      if (x_eval >= x(i) .and. x_eval <= x(i+1)) then
         y_eval = y(i) + (y(i+1)-y(i)) * (x_eval - x(i)) / (x(i+1)-x(i))
@@ -441,7 +486,6 @@ subroutine lin_interp_arrays(npts, iz, x, y, x_eval, y_eval)
      endif
   enddo
   
-  ! Fallback
   y_eval = y(iend)
   
 end subroutine lin_interp_arrays
