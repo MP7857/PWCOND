@@ -108,33 +108,38 @@ implicit none
                x3(ir)=betar(ir)*bessj(0,gn*rz)/r(ir)**2
                x4(ir)=betar(ir)*bessj(0,gn*rz)
             elseif (lb.eq.3) then
-               x1(ir)=betar(ir)*bessj(3,gn*rz)*rz**3/r(ir)**3
-               x2(ir)=betar(ir)*bessj(2,gn*rz)*rz**2/r(ir)**3
-               x3(ir)=betar(ir)*bessj(1,gn*rz)*rz/r(ir)**3
-               x4(ir)=betar(ir)*bessj(1,gn*rz)*rz**3/r(ir)**3
-               x5(ir)=betar(ir)*bessj(0,gn*rz)/r(ir)**3
-               x6(ir)=betar(ir)*bessj(0,gn*rz)*rz**2/r(ir)**3
+               ! Store SMOOTH parts only (without Bessel functions)
+               ! Bessel functions will be evaluated on fine grid later
+               x1(ir)=betar(ir)*rz**3/r(ir)**3
+               x2(ir)=betar(ir)*rz**2/r(ir)**3
+               x3(ir)=betar(ir)*rz/r(ir)**3
+               x4(ir)=betar(ir)*rz**3/r(ir)**3
+               x5(ir)=betar(ir)/r(ir)**3
+               x6(ir)=betar(ir)*rz**2/r(ir)**3
             else
                call errore ('four','ls not programmed ',1)
             endif
          enddo
-         call simpson(nmeshs-iz+1,x1(iz),rab(iz),fx1(kz))
-         if (iz.eq.1) then
-            dr=r(iz)
-         else
-            dr=r(iz)-r(iz-1)
-         endif
-         zr=r(iz)-abs(zsl(kz))
-         if (lb.eq.0) then
+         if (lb.ne.3) then
+            ! Standard integration for lb=0,1,2
+            call simpson(nmeshs-iz+1,x1(iz),rab(iz),fx1(kz))
             if (iz.eq.1) then
-               x1(iz-1)=betar(iz)-betar(iz)/dr*zr
+               dr=r(iz)
             else
-               x1(iz-1)=betar(iz)-(betar(iz)-betar(iz-1))/dr*zr
+               dr=r(iz)-r(iz-1)
             endif
-            fx1(kz)=fx1(kz)+(x1(iz-1)+x1(iz))*0.5d0*zr
-         else
-            fx1(kz)=fx1(kz)+x1(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x2(iz),rab(iz),fx2(kz))
+            zr=r(iz)-abs(zsl(kz))
+            if (lb.eq.0) then
+               if (iz.eq.1) then
+                  x1(iz-1)=betar(iz)-betar(iz)/dr*zr
+               else
+                  x1(iz-1)=betar(iz)-(betar(iz)-betar(iz-1))/dr*zr
+               endif
+               fx1(kz)=fx1(kz)+(x1(iz-1)+x1(iz))*0.5d0*zr
+            else
+               fx1(kz)=fx1(kz)+x1(iz)*0.5d0*zr
+               call simpson(nmeshs-iz+1,x2(iz),rab(iz),fx2(kz))
+            endif
          endif
          if (lb.eq.1) then
             if(iz.eq.1) then
@@ -161,21 +166,17 @@ implicit none
             fx3(kz)=fx3(kz)+(x3(iz-1)+x3(iz))*0.5d0*zr
             fx4(kz)=fx4(kz)+(x4(iz-1)+x4(iz))*0.5d0*zr
          elseif (lb.eq.3) then
-            fx2(kz)=fx2(kz)+x2(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x3(iz),rab(iz),fx3(kz))
-            fx3(kz)=fx3(kz)+x3(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x4(iz),rab(iz),fx4(kz))
-            fx4(kz)=fx4(kz)+x4(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x5(iz),rab(iz),fx5(kz))
-            call simpson(nmeshs-iz+1,x6(iz),rab(iz),fx6(kz))
-            if(iz.eq.1) then
-               x5(iz-1)=0.d0
-            else
-               x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3)
-            endif
-            x6(iz-1)=0.d0
-            fx5(kz)=fx5(kz)+(x5(iz-1)+x5(iz))*0.5d0*zr
-            fx6(kz)=fx6(kz)+(x6(iz-1)+x6(iz))*0.5d0*zr
+            ! Use robust fine-grid integration for f-orbitals
+            ! This addresses accuracy issues at high g-values by:
+            ! 1. Interpolating smooth part onto fine grid
+            ! 2. Evaluating Bessel functions on fine grid
+            ! 3. Integrating the product
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x1, zsl(kz), gn, 3, fx1(kz))
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x2, zsl(kz), gn, 2, fx2(kz))
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x3, zsl(kz), gn, 1, fx3(kz))
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x4, zsl(kz), gn, 1, fx4(kz))
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x5, zsl(kz), gn, 0, fx5(kz))
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x6, zsl(kz), gn, 0, fx6(kz))
          endif
        else
           fx1(kz)=0.d0
@@ -311,3 +312,132 @@ function indexr(zz, ndim, r)
   indexr=iz
   return
 end function indexr
+
+!-----------------------------------------------------------------------
+subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, result)
+  !-----------------------------------------------------------------------
+  ! Interpolates smooth integrand from x_smooth array onto a fine linear 
+  ! grid, evaluates Bessel function J_m on that grid, and integrates.
+  ! 
+  ! This addresses integration accuracy issues for highly oscillatory
+  ! integrands (f-orbitals at high g-values) by sampling oscillations
+  ! on a fine grid rather than the coarse logarithmic grid.
+  !
+  ! Input:
+  !   npts: number of points from iz to end
+  !   iz: starting index in arrays
+  !   r: radial grid  
+  !   x_smooth: smooth part of integrand (from iz onwards)
+  !   z: z-coordinate of slice
+  !   g: magnitude of g-vector
+  !   m: Bessel function order
+  ! Output:
+  !   result: integrated value
+  !-----------------------------------------------------------------------
+  USE kinds, only : DP
+  USE radial_grids, only : ndmx
+  implicit none
+  integer, intent(in) :: npts, iz, m
+  real(DP), intent(in) :: r(ndmx), x_smooth(0:ndmx), z, g
+  real(DP), intent(out) :: result
+
+  integer :: i, n_fine, ir, nmesh_end
+  real(DP) :: zabs, r_start, r_end, dr_fine, r_curr, r_perp
+  real(DP) :: val_smooth, val_bess, b_arg, bessj
+  real(DP), allocatable :: y_fine(:)
+
+  zabs = abs(z)
+  nmesh_end = iz + npts - 1
+  r_start = max(zabs, r(1))  ! Start from abs(z), not r(iz)
+  r_end = r(nmesh_end)
+  
+  ! Safety check
+  if (r_start >= r_end) then
+     result = 0.d0
+     return
+  endif
+
+  ! Define Fine Grid Density
+  ! At least 10 points per Bessel oscillation period
+  n_fine = max(500, int(g * (r_end - r_start) * 5.0d0))
+  n_fine = min(n_fine, 5000) ! Cap to avoid excessive cost
+  
+  ! Ensure odd number for Simpson's rule
+  if (mod(n_fine, 2) .eq. 0) n_fine = n_fine + 1
+  
+  allocate(y_fine(n_fine))
+
+  dr_fine = (r_end - r_start) / dble(n_fine - 1)
+
+  ! Build Integrand on Fine Grid
+  do i = 1, n_fine
+     r_curr = r_start + dble(i-1)*dr_fine
+     
+     ! Interpolate smooth part from x_smooth array
+     call lin_interp_arrays(npts, iz, r, x_smooth, r_curr, val_smooth)
+     
+     ! Compute Bessel function
+     r_perp = 0.d0
+     if (r_curr > zabs) r_perp = sqrt(r_curr**2 - zabs**2)
+     
+     b_arg = g * r_perp
+     val_bess = bessj(m, b_arg)
+     
+     ! Combine
+     y_fine(i) = val_smooth * val_bess
+  enddo
+
+  ! Simpson's Rule Integration on uniform grid
+  result = 0.d0
+  if (n_fine >= 3) then
+     result = y_fine(1) + y_fine(n_fine)
+     do i = 2, n_fine - 1, 2
+        result = result + 4.d0 * y_fine(i)
+     enddo
+     do i = 3, n_fine - 2, 2
+        result = result + 2.d0 * y_fine(i)
+     enddo
+     result = result * dr_fine / 3.d0
+  endif
+
+  deallocate(y_fine)
+
+end subroutine integrate_fine_from_arrays
+
+!-----------------------------------------------------------------------
+subroutine lin_interp_arrays(npts, iz, x, y, x_eval, y_eval)
+  !-----------------------------------------------------------------------
+  ! Linear interpolation for arrays starting at index iz
+  ! Interpolates y values defined on x grid from iz to iz+npts-1
+  !-----------------------------------------------------------------------
+  USE kinds, only : DP
+  USE radial_grids, only : ndmx
+  implicit none
+  integer, intent(in) :: npts, iz
+  real(DP), intent(in) :: x(ndmx), y(0:ndmx), x_eval
+  real(DP), intent(out) :: y_eval
+  integer :: i, iend
+
+  iend = iz + npts - 1
+  
+  if (x_eval <= x(iz)) then
+     y_eval = y(iz)
+     return
+  endif
+  if (x_eval >= x(iend)) then
+     y_eval = y(iend)
+     return
+  endif
+
+  ! Linear search
+  do i = iz, iend-1
+     if (x_eval >= x(i) .and. x_eval <= x(i+1)) then
+        y_eval = y(i) + (y(i+1)-y(i)) * (x_eval - x(i)) / (x(i+1)-x(i))
+        return
+     endif
+  enddo
+  
+  ! Fallback
+  y_eval = y(iend)
+  
+end subroutine lin_interp_arrays
