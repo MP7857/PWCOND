@@ -301,7 +301,7 @@ implicit none
 end subroutine four
 
 function indexr(zz, ndim, r)
-  USE kinds, only : DP
+  USE kinds, ONLY : DP
   implicit none
 
   integer :: iz, ndim, indexr
@@ -406,7 +406,12 @@ subroutine integrate_fine(n_coarse, iz, r_coarse, y_smooth, z_val, &
   integrand(1) = val_z
   
   ! Apply composite Simpson's rule
+  ! Note: n_fine is guaranteed to be odd, so loop terminates at i=n_fine-2
+  ! accessing integrand(n_fine-2), integrand(n_fine-1), integrand(n_fine)
   result = 0.d0
+  if (mod(n_fine, 2) == 0) then
+    call errore('integrate_fine', 'n_fine must be odd for Simpson rule', n_fine)
+  endif
   do i = 1, n_fine - 2, 2
     result = result + (integrand(i) + 4.d0*integrand(i+1) + integrand(i+2))
   enddo
