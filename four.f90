@@ -198,16 +198,17 @@ implicit none
             endif
             
             ! --- Call Robust Integration with Start Value ---
-            ! Pass 0.d0 for terms containing r_perp, and val_z_x5 for x5
-            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x1, zsl(kz), gn, 3, 0.d0, fx1(kz))
-            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x2, zsl(kz), gn, 2, 0.d0, fx2(kz))
-            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x3, zsl(kz), gn, 1, 0.d0, fx3(kz))
-            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x4, zsl(kz), gn, 1, 0.d0, fx4(kz))
+            ! Use cubic spline for x1-x4, x6 (smooth functions with r_perp factors)
+            ! Use PCHIP for x5 (has 1/r^3 singularity - needs monotone interpolation)
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x1, zsl(kz), gn, 3, 0.d0, fx1(kz), .false.)
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x2, zsl(kz), gn, 2, 0.d0, fx2(kz), .false.)
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x3, zsl(kz), gn, 1, 0.d0, fx3(kz), .false.)
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x4, zsl(kz), gn, 1, 0.d0, fx4(kz), .false.)
             
-            ! Pass the calculated non-zero start value for x5
-            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x5, zsl(kz), gn, 0, val_z_x5, fx5(kz))
+            ! Pass the calculated non-zero start value for x5, use PCHIP for monotonicity
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x5, zsl(kz), gn, 0, val_z_x5, fx5(kz), .true.)
             
-            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x6, zsl(kz), gn, 0, 0.d0, fx6(kz))
+            call integrate_fine_from_arrays(nmeshs-iz+1, iz, r, x6, zsl(kz), gn, 0, 0.d0, fx6(kz), .false.)
          endif
        else
           fx1(kz)=0.d0
@@ -345,7 +346,7 @@ function indexr(zz, ndim, r)
 end function indexr
 
 !-----------------------------------------------------------------------
-subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, val_at_z, result)
+subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, val_at_z, result, use_pchip)
   !-----------------------------------------------------------------------
   ! Interpolates smooth integrand from x_smooth array onto a fine linear 
   ! grid, evaluates Bessel function J_m on that grid, and integrates.
@@ -363,6 +364,7 @@ subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, val_at_z, 
   !   g: magnitude of g-vector
   !   m: Bessel function order
   !   val_at_z: Value of smooth function at r=|z|
+  !   use_pchip: if true, use PCHIP interpolation; else use cubic spline
   ! Output:
   !   result: integrated value
   !-----------------------------------------------------------------------
@@ -371,6 +373,7 @@ subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, val_at_z, 
   implicit none
   integer, intent(in) :: npts, iz, m
   real(DP), intent(in) :: r(ndmx), x_smooth(0:ndmx), z, g, val_at_z
+  logical, intent(in) :: use_pchip
   real(DP), intent(out) :: result
   
   ! DECLARE BESSJ AS EXTERNAL TO AVOID ARRAY CONFUSION
@@ -395,11 +398,12 @@ subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, val_at_z, 
   endif
 
   ! Define Fine Grid Density
-  ! Bessel oscillation period ~ 2*pi/g, so we want at least ~10 points per period
-  ! This gives grid spacing ~ pi/(5*g), hence n_fine ~ g * range / (pi/(5*g)) ~ 5*g*range/pi
-  ! Using factor of 5 (instead of ~5/pi) provides extra safety margin
-  n_fine = max(500, int(g * (r_end - r_start) * 5.0d0))
-  n_fine = min(n_fine, 5000) ! Cap to avoid excessive cost
+  ! Bessel oscillation period ~ 2*pi/g, so we want at least 20-40 points per period
+  ! for high accuracy with cubic/PCHIP interpolation
+  ! n_fine ~ 40 * g * (r_end - r_start) / (2*pi) ~ 6.4 * g * range
+  ! Using factor of 40 for high accuracy (can be reduced if needed)
+  n_fine = max(500, int(g * (r_end - r_start) * 40.0d0))
+  n_fine = min(n_fine, 10000) ! Cap to avoid excessive cost
   
   ! Ensure odd number for Simpson's rule
   if (mod(n_fine, 2) .eq. 0) n_fine = n_fine + 1
@@ -412,8 +416,14 @@ subroutine integrate_fine_from_arrays(npts, iz, r, x_smooth, z, g, m, val_at_z, 
   do i = 1, n_fine
      r_curr = r_start + dble(i-1)*dr_fine
      
-     ! PASS val_at_z and zabs to the interpolator
-     call lin_interp_arrays(npts, iz, r, x_smooth, r_curr, zabs, val_at_z, val_smooth)
+     ! Choose interpolation method based on flag
+     if (use_pchip) then
+        ! PCHIP interpolation - monotone preserving, better for 1/r^3 singularities
+        call pchip_interp(npts, iz, r, x_smooth, r_curr, zabs, val_at_z, val_smooth)
+     else
+        ! Cubic spline interpolation - smoother for well-behaved functions
+        call cubic_spline_interp(npts, iz, r, x_smooth, r_curr, zabs, val_at_z, val_smooth)
+     endif
      
      ! Compute Bessel function
      r_perp = 0.d0
@@ -489,3 +499,220 @@ subroutine lin_interp_arrays(npts, iz, x, y, x_eval, z_abs, val_at_z, y_eval)
   y_eval = y(iend)
   
 end subroutine lin_interp_arrays
+
+!-----------------------------------------------------------------------
+subroutine pchip_interp(npts, iz, x, y, x_eval, z_abs, val_at_z, y_eval)
+  !-----------------------------------------------------------------------
+  ! PCHIP (Piecewise Cubic Hermite Interpolating Polynomial) interpolation
+  ! This is a monotone-preserving cubic interpolation, ideal for functions
+  ! with singularities like 1/r^3. Based on Fritsch-Carlson algorithm.
+  !
+  ! Reference: Fritsch & Carlson (1980), "Monotone Piecewise Cubic Interpolation"
+  !-----------------------------------------------------------------------
+  USE kinds, only : DP
+  USE radial_grids, only : ndmx
+  implicit none
+  integer, intent(in) :: npts, iz
+  real(DP), intent(in) :: x(ndmx), y(0:ndmx), x_eval, z_abs, val_at_z
+  real(DP), intent(out) :: y_eval
+  
+  integer :: i, iend, n_nodes
+  real(DP), allocatable :: x_nodes(:), y_nodes(:), d(:), delta_k(:)
+  real(DP) :: h, t, h00, h10, h01, h11, h1, h2, w1, w2
+  real(DP) :: alpha, beta, tau
+  
+  iend = iz + npts - 1
+  
+  ! Handle boundary case: in gap [z_abs, x(iz)]
+  if (x_eval < x(iz)) then
+     if (x(iz) - z_abs > 1.0d-12) then
+        y_eval = val_at_z + (y(iz) - val_at_z) * (x_eval - z_abs) / (x(iz) - z_abs)
+     else
+        y_eval = val_at_z
+     endif
+     return
+  endif
+  
+  ! Beyond grid - clamp
+  if (x_eval >= x(iend)) then
+     y_eval = y(iend)
+     return
+  endif
+  
+  ! Build node list including boundary point
+  n_nodes = npts + 1
+  allocate(x_nodes(n_nodes), y_nodes(n_nodes), d(n_nodes))
+  
+  x_nodes(1) = z_abs
+  y_nodes(1) = val_at_z
+  do i = 2, n_nodes
+     x_nodes(i) = x(iz + i - 2)
+     y_nodes(i) = y(iz + i - 2)
+  enddo
+  
+  ! Compute PCHIP tangents using Fritsch-Carlson method
+  ! Step 1: Compute secant slopes (deltas)
+  allocate(delta_k(n_nodes-1))
+  do i = 1, n_nodes - 1
+     delta_k(i) = (y_nodes(i+1) - y_nodes(i)) / (x_nodes(i+1) - x_nodes(i))
+  enddo
+  
+  ! Step 2: Estimate derivatives at interior points
+  d(1) = delta_k(1)  ! One-sided at start
+  d(n_nodes) = delta_k(n_nodes-1)  ! One-sided at end
+  
+  do i = 2, n_nodes - 1
+     ! Check for monotonicity - if slopes change sign, set d=0
+     if (delta_k(i-1) * delta_k(i) <= 0.d0) then
+        d(i) = 0.d0
+     else
+        ! Weighted harmonic mean
+        h1 = x_nodes(i) - x_nodes(i-1)
+        h2 = x_nodes(i+1) - x_nodes(i)
+        w1 = 2.d0*h2 + h1
+        w2 = h2 + 2.d0*h1
+        d(i) = (w1 + w2) / (w1/delta_k(i-1) + w2/delta_k(i))
+     endif
+  enddo
+  
+  ! Step 3: Adjust derivatives to ensure monotonicity in each interval
+  do i = 1, n_nodes - 1
+     if (abs(delta_k(i)) < 1.0d-12) then
+        d(i) = 0.d0
+        d(i+1) = 0.d0
+     else
+        alpha = d(i) / delta_k(i)
+        beta = d(i+1) / delta_k(i)
+        ! Check if (alpha,beta) is outside the monotonicity region
+        if (alpha**2 + beta**2 > 9.d0) then
+           tau = 3.d0 / sqrt(alpha**2 + beta**2)
+           d(i) = tau * alpha * delta_k(i)
+           d(i+1) = tau * beta * delta_k(i)
+        endif
+     endif
+  enddo
+  
+  deallocate(delta_k)
+  
+  ! Step 3: Find interval and evaluate cubic Hermite polynomial
+  do i = 1, n_nodes - 1
+     if (x_eval >= x_nodes(i) .and. x_eval <= x_nodes(i+1)) then
+        h = x_nodes(i+1) - x_nodes(i)
+        t = (x_eval - x_nodes(i)) / h
+        
+        ! Hermite basis functions
+        h00 = (1.d0 + 2.d0*t) * (1.d0 - t)**2
+        h10 = t * (1.d0 - t)**2
+        h01 = t**2 * (3.d0 - 2.d0*t)
+        h11 = t**2 * (t - 1.d0)
+        
+        y_eval = h00*y_nodes(i) + h10*h*d(i) + h01*y_nodes(i+1) + h11*h*d(i+1)
+        
+        deallocate(x_nodes, y_nodes, d)
+        return
+     endif
+  enddo
+  
+  ! Fallback
+  y_eval = y(iend)
+  deallocate(x_nodes, y_nodes, d)
+  
+end subroutine pchip_interp
+
+!-----------------------------------------------------------------------
+subroutine cubic_spline_interp(npts, iz, x, y, x_eval, z_abs, val_at_z, y_eval)
+  !-----------------------------------------------------------------------
+  ! Cubic spline interpolation (natural spline with zero second derivative
+  ! at boundaries). Better than linear for smooth functions.
+  !-----------------------------------------------------------------------
+  USE kinds, only : DP
+  USE radial_grids, only : ndmx
+  implicit none
+  integer, intent(in) :: npts, iz
+  real(DP), intent(in) :: x(ndmx), y(0:ndmx), x_eval, z_abs, val_at_z
+  real(DP), intent(out) :: y_eval
+  
+  integer :: i, j, iend, n_nodes
+  real(DP), allocatable :: x_nodes(:), y_nodes(:), a(:), b(:), c(:), d_coef(:), h(:), alpha(:), l(:), mu(:), z_vec(:)
+  real(DP) :: t, dx
+  
+  iend = iz + npts - 1
+  
+  ! Handle boundary case
+  if (x_eval < x(iz)) then
+     if (x(iz) - z_abs > 1.0d-12) then
+        y_eval = val_at_z + (y(iz) - val_at_z) * (x_eval - z_abs) / (x(iz) - z_abs)
+     else
+        y_eval = val_at_z
+     endif
+     return
+  endif
+  
+  if (x_eval >= x(iend)) then
+     y_eval = y(iend)
+     return
+  endif
+  
+  ! Build node list
+  n_nodes = npts + 1
+  allocate(x_nodes(n_nodes), y_nodes(n_nodes))
+  allocate(a(n_nodes), b(n_nodes-1), c(n_nodes-1), d_coef(n_nodes-1), h(n_nodes-1))
+  allocate(alpha(n_nodes-1), l(n_nodes), mu(n_nodes), z_vec(n_nodes))
+  
+  x_nodes(1) = z_abs
+  y_nodes(1) = val_at_z
+  do i = 2, n_nodes
+     x_nodes(i) = x(iz + i - 2)
+     y_nodes(i) = y(iz + i - 2)
+  enddo
+  
+  ! Natural cubic spline algorithm
+  do i = 1, n_nodes
+     a(i) = y_nodes(i)
+  enddo
+  
+  do i = 1, n_nodes - 1
+     h(i) = x_nodes(i+1) - x_nodes(i)
+  enddo
+  
+  do i = 2, n_nodes - 1
+     alpha(i) = 3.d0*(a(i+1)-a(i))/h(i) - 3.d0*(a(i)-a(i-1))/h(i-1)
+  enddo
+  
+  ! Solve tridiagonal system
+  l(1) = 1.d0
+  mu(1) = 0.d0
+  z_vec(1) = 0.d0
+  
+  do i = 2, n_nodes - 1
+     l(i) = 2.d0*(x_nodes(i+1)-x_nodes(i-1)) - h(i-1)*mu(i-1)
+     mu(i) = h(i)/l(i)
+     z_vec(i) = (alpha(i) - h(i-1)*z_vec(i-1))/l(i)
+  enddo
+  
+  l(n_nodes) = 1.d0
+  z_vec(n_nodes) = 0.d0
+  c(n_nodes-1) = 0.d0
+  
+  do j = n_nodes - 1, 1, -1
+     c(j) = z_vec(j) - mu(j)*c(j+1)
+     b(j) = (a(j+1)-a(j))/h(j) - h(j)*(c(j+1)+2.d0*c(j))/3.d0
+     d_coef(j) = (c(j+1)-c(j))/(3.d0*h(j))
+  enddo
+  
+  ! Evaluate at x_eval
+  do i = 1, n_nodes - 1
+     if (x_eval >= x_nodes(i) .and. x_eval <= x_nodes(i+1)) then
+        dx = x_eval - x_nodes(i)
+        y_eval = a(i) + b(i)*dx + c(i)*dx**2 + d_coef(i)*dx**3
+        
+        deallocate(x_nodes, y_nodes, a, b, c, d_coef, h, alpha, l, mu, z_vec)
+        return
+     endif
+  enddo
+  
+  ! Fallback
+  y_eval = y(iend)
+  deallocate(x_nodes, y_nodes, a, b, c, d_coef, h, alpha, l, mu, z_vec)
+  
+end subroutine cubic_spline_interp
