@@ -44,17 +44,18 @@ subroutine four(w0, z0, dz, tblm, taunew, r, rab, betar)
 implicit none
 
   integer :: kz, ig, ign, igphi, &
-             indexr, iz, lb, ir, nmesh, nmeshs, tblm(4)
+             indexr, iz, lb, ir, nmesh, nmeshs, tblm(4), iend
   real(DP), parameter :: eps=1.d-8
   complex(DP), parameter :: cim=(0.d0, 1.d0)
   real(DP) :: gn, s1, s2, s3, s4, cs, sn, cs2, sn2, cs3, sn3, rz, dz1, zr, &
-                   dr, z0, dz,  bessj, taunew(4), r(ndmx),         &
+                   dr, dr_end, z0, dz,  bessj, taunew(4), r(ndmx),         &
                    rab(ndmx), betar(ndmx)
   real(DP), allocatable :: x1(:), x2(:), x3(:), x4(:), x5(:), x6(:)
   real(DP), allocatable :: fx1(:), fx2(:), fx3(:), fx4(:), fx5(:), fx6(:), zsl(:)
   complex(DP) :: w0(nz1, ngper, 7)
   complex(DP), allocatable :: wadd(:,:), wadd2(:,:), wadd3(:,:)
   complex(DP) :: t1, t2, t3, t4, t5, t6, t7, wa1, wa2, wa3
+  logical :: last_trap
 
 
   allocate( x1(0:ndmx) )
@@ -87,15 +88,31 @@ implicit none
   do ign=1, ngpsh
 
      gn=gnsh(ign)
+     fx1(:)=0.d0
+     fx2(:)=0.d0
+     fx3(:)=0.d0
+     fx4(:)=0.d0
+     fx5(:)=0.d0
+     fx6(:)=0.d0
+     wadd(:,:)=cmplx(0.d0,0.d0,kind=DP)
+     wadd2(:,:)=cmplx(0.d0,0.d0,kind=DP)
+     wadd3(:,:)=cmplx(0.d0,0.d0,kind=DP)
      do kz=1, nz1
        if (abs(zsl(kz))+eps.le.taunew(4)*alat) then
          iz=indexr(zsl(kz),nmesh,r)
-         if ((nmesh-iz)/2*2.eq.nmesh-iz) then
-            nmeshs=nmesh
-         else
-            nmeshs=nmesh+1
+         last_trap=.false.
+         nmeshs=nmesh
+         if (mod(nmesh-iz,2).ne.0) then
+            if (nmesh.lt.ndmx) then
+               nmeshs=nmesh+1
+            else
+               nmeshs=nmesh-1
+               last_trap=.true.
+            endif
          endif
-         do ir=iz, nmeshs
+         iend=nmeshs
+         if (last_trap) iend=nmeshs+1
+         do ir=iz, iend
             rz=sqrt(r(ir)**2-zsl(kz)**2)
             if (lb.eq.0) then
                x1(ir)=betar(ir)*bessj(0,gn*rz)
@@ -132,10 +149,15 @@ implicit none
                x1(iz-1)=betar(iz)-(betar(iz)-betar(iz-1))/dr*zr
             endif
             fx1(kz)=fx1(kz)+(x1(iz-1)+x1(iz))*0.5d0*zr
-         else
-            fx1(kz)=fx1(kz)+x1(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x2(iz),rab(iz),fx2(kz))
-         endif
+          else
+             if (lb.eq.3) then
+                x1(iz-1)=0.d0
+                fx1(kz)=fx1(kz)+(x1(iz-1)+x1(iz))*0.5d0*zr
+             else
+                fx1(kz)=fx1(kz)+x1(iz)*0.5d0*zr
+             endif
+             call simpson(nmeshs-iz+1,x2(iz),rab(iz),fx2(kz))
+          endif
          if (lb.eq.1) then
             if(iz.eq.1) then
               x2(iz-1)=0.d0
@@ -160,37 +182,56 @@ implicit none
             endif
             fx3(kz)=fx3(kz)+(x3(iz-1)+x3(iz))*0.5d0*zr
             fx4(kz)=fx4(kz)+(x4(iz-1)+x4(iz))*0.5d0*zr
-         elseif (lb.eq.3) then
-            fx2(kz)=fx2(kz)+x2(iz)*0.5d0*zr
-            call simpson(nmeshs-iz+1,x3(iz),rab(iz),fx3(kz))
-            fx3(kz)=fx3(kz)+x3(iz)*0.5d0*zr
+          elseif (lb.eq.3) then
+             fx2(kz)=fx2(kz)+x2(iz)*0.5d0*zr
+             call simpson(nmeshs-iz+1,x3(iz),rab(iz),fx3(kz))
+             fx3(kz)=fx3(kz)+x3(iz)*0.5d0*zr
             call simpson(nmeshs-iz+1,x4(iz),rab(iz),fx4(kz))
             fx4(kz)=fx4(kz)+x4(iz)*0.5d0*zr
             call simpson(nmeshs-iz+1,x5(iz),rab(iz),fx5(kz))
             call simpson(nmeshs-iz+1,x6(iz),rab(iz),fx6(kz))
-            if(iz.eq.1) then
-               x5(iz-1)=0.d0
-            else
-               x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3)
-            endif
-            x6(iz-1)=0.d0
-            fx5(kz)=fx5(kz)+(x5(iz-1)+x5(iz))*0.5d0*zr
-            fx6(kz)=fx6(kz)+(x6(iz-1)+x6(iz))*0.5d0*zr
-         endif
-       else
-          fx1(kz)=0.d0
-          fx2(kz)=0.d0
+             if(iz.eq.1) then
+                x5(iz-1)=0.d0
+             else
+                x5(iz-1)=(betar(iz)-(betar(iz)-betar(iz-1))/dr*zr)/(abs(zsl(kz))**3)
+             endif
+             x6(iz-1)=0.d0
+             fx5(kz)=fx5(kz)+(x5(iz-1)+x5(iz))*0.5d0*zr
+             fx6(kz)=fx6(kz)+(x6(iz-1)+x6(iz))*0.5d0*zr
+          endif
+          if (last_trap) then
+             dr_end=r(nmeshs+1)-r(nmeshs)
+             fx1(kz)=fx1(kz)+(x1(nmeshs)+x1(nmeshs+1))*0.5d0*dr_end
+             if (lb.ge.1) fx2(kz)=fx2(kz)+(x2(nmeshs)+x2(nmeshs+1))*0.5d0*dr_end
+             if (lb.ge.2) then
+                fx3(kz)=fx3(kz)+(x3(nmeshs)+x3(nmeshs+1))*0.5d0*dr_end
+                fx4(kz)=fx4(kz)+(x4(nmeshs)+x4(nmeshs+1))*0.5d0*dr_end
+             endif
+             if (lb.eq.3) then
+                fx5(kz)=fx5(kz)+(x5(nmeshs)+x5(nmeshs+1))*0.5d0*dr_end
+                fx6(kz)=fx6(kz)+(x6(nmeshs)+x6(nmeshs+1))*0.5d0*dr_end
+             endif
+          endif
+        else
+           fx1(kz)=0.d0
+           fx2(kz)=0.d0
           fx3(kz)=0.d0
           fx4(kz)=0.d0
           fx5(kz)=0.d0
           fx6(kz)=0.d0
        endif
      enddo
-     do igphi=1, ninsh(ign)
-        ig=ig+1
-        if (gn.gt.eps) then
-          cs=gper(1,ig)*tpiba/gn
-          sn=gper(2,ig)*tpiba/gn
+      do igphi=1, ninsh(ign)
+         ig=ig+1
+         w0(:,ig,:)=cmplx(0.d0,0.d0,kind=DP)
+         if (lb.eq.3) then
+            wadd(:,ig)=cmplx(0.d0,0.d0,kind=DP)
+            wadd2(:,ig)=cmplx(0.d0,0.d0,kind=DP)
+            wadd3(:,ig)=cmplx(0.d0,0.d0,kind=DP)
+         endif
+         if (gn.gt.eps) then
+           cs=gper(1,ig)*tpiba/gn
+           sn=gper(2,ig)*tpiba/gn
         else
           cs=0.d0
           sn=0.d0
