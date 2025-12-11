@@ -89,20 +89,21 @@ implicit none
 
      gn=gnsh(ign)
      fx1(:)=0.d0
-     fx2(:)=0.d0
-     fx3(:)=0.d0
-     fx4(:)=0.d0
-     fx5(:)=0.d0
-     fx6(:)=0.d0
-     wadd(:,:)=cmplx(0.d0,0.d0,kind=DP)
-     wadd2(:,:)=cmplx(0.d0,0.d0,kind=DP)
-     wadd3(:,:)=cmplx(0.d0,0.d0,kind=DP)
+     if (lb.ge.1) fx2(:)=0.d0
+     if (lb.ge.2) then
+        fx3(:)=0.d0
+        fx4(:)=0.d0
+     endif
+     if (lb.eq.3) then
+        fx5(:)=0.d0
+        fx6(:)=0.d0
+     endif
      do kz=1, nz1
        if (abs(zsl(kz))+eps.le.taunew(4)*alat) then
          iz=indexr(zsl(kz),nmesh,r)
          last_trap=.false.
          nmeshs=nmesh
-         if (mod(nmesh-iz,2).ne.0) then
+         if (mod(nmesh-iz,2)/=0) then
             if (nmesh.lt.ndmx) then
                nmeshs=nmesh+1
             else
@@ -224,8 +225,8 @@ implicit none
       do igphi=1, ninsh(ign)
          ig=ig+1
          w0(:,ig,:)=cmplx(0.d0,0.d0,kind=DP)
+         if (lb.ge.2) wadd(:,ig)=cmplx(0.d0,0.d0,kind=DP)
          if (lb.eq.3) then
-            wadd(:,ig)=cmplx(0.d0,0.d0,kind=DP)
             wadd2(:,ig)=cmplx(0.d0,0.d0,kind=DP)
             wadd3(:,ig)=cmplx(0.d0,0.d0,kind=DP)
          endif
